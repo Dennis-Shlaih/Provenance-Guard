@@ -105,84 +105,91 @@ The metrics can also be affected by short submissions, which may not provide eno
 
 **The design choice:**
 
-The model signal and style signal receive equal weight in the combined score. However, neither signal should automatically override the other.
+The model signal and style signal receive equal weight in the combined score. I kept the weights equal because the preliminary calibration did not provide enough evidence to justify favoring one signal through a different weighting scheme.
 
-Calibration revealed that the model signal can assign a very high AI-likelihood score to conventional human writing. For example, one human-written sample received a model score of 0.9612 but a style score of 0.4668.
+The combined score is calculated as a weighted average of the two signals. The system does not currently use a disagreement safeguard. Instead, the classification thresholds determine whether the combined score is high enough for a confident label.
 
-To account for this, the proposed combining rule includes a disagreement safeguard. If the absolute difference between the two signal scores is greater than or equal to 0.30, the system should return `unsure` rather than allow the weighted average to produce a potentially misleading confident classification.
+I also raised the AI threshold from 0.65 to 0.69 after preliminary calibration. One human-written sample had a combined score of 0.6849, while one AI-generated sample had a combined score of 0.7002. The revised threshold places the human sample in the unsure range while retaining the AI sample as a high-confidence AI classification.
 
-When the signals do not exceed the disagreement cutoff, their scores are averaged using equal weights.
+This is a provisional threshold adjustment, not evidence of a reliable boundary between human and AI writing. The scores from the preliminary samples overlap, and the change favors reducing false-positive AI labels at the cost of classifying more AI-generated samples as unsure.
 
 The combined score is a heuristic AI-likelihood score, not a calibrated probability of authorship.
 
 **The numbers:**
 
-Initial configuration:
+Current configuration:
 
 ```text
 Model signal weight:       0.50
 Style signal weight:       0.50
-Disagreement cutoff:       0.30
 Human threshold:           0.35
-AI threshold:              0.65
+AI threshold:              0.69
 ```
 
 Combining formula:
 
 ```text
-Combined Score = (0.50 × Model Score) + (0.50 × Style Score)
+Combined Score =
+    (0.50 × Model Score) + (0.50 × Style Score)
 
-Disagreement = abs(Model Score - Style Score)
-
-If Disagreement >= 0.30:
-    Label = unsure
-Otherwise:
-    Score <= 0.35: human
-    Score >= 0.65: ai
-    Otherwise: unsure
+Score <= 0.35: human
+Score >= 0.69: ai
+Otherwise: unsure
 ```
 
-The combined score is interpreted using these thresholds:
+The thresholds are inclusive: a score of exactly 0.35 receives the human label, and a score of exactly 0.69 receives the AI label.
+
+The three labels are interpreted as follows:
 
 - **Human:** Combined score is less than or equal to 0.35.
-- **Unsure:** Combined score is greater than 0.35 and less than 0.65, or the disagreement safeguard is triggered.
-- **AI:** Combined score is greater than or equal to 0.65, provided the disagreement safeguard is not triggered.
+- **Unsure:** Combined score is greater than 0.35 and less than 0.69.
+- **AI:** Combined score is greater than or equal to 0.69.
 
 **Where it lives:** `scoring.py::combine_signals`
 
-The model/style weights and classification thresholds are configurable in `config.py`. The 0.30 disagreement cutoff is part of the proposed rule above.
+The model/style weights and classification thresholds are configurable in `config.py`. The combining function applies the configured weights, while `score_to_label` applies the classification thresholds.
 
 ### Calibration results
 
-I tested both signals on four deliberately chosen writing samples. The table records the model score, style score, and calculated combined score for each sample.
+I conducted preliminary calibration using five human-written samples and five AI-generated samples on corresponding topics. The samples covered geology, a book summary, a literary analysis, public spaces, and housing policy.
+
+The table records the model score, style score, and equal-weight combined score for each sample.
 
 | Calibration input | Model score | Style score | Combined score |
 |---|---:|---:|---:|
-| Clearly AI | 0.7061 | 0.5848 | 0.6455 |
-| Clearly human | 0.9612 | 0.4668 | 0.7140 |
-| Formal human | 0.7155 | 0.5289 | 0.6222 |
-| Lightly edited AI | 0.5084 | 0.5507 | 0.5296 |
+| Human — geology | 0.4749 | 0.5779 | 0.5264 |
+| AI — geology | 0.6828 | 0.5149 | 0.5989 |
+| Human — book summary | 0.8110 | 0.5588 | 0.6849 |
+| AI — book summary | 0.7894 | 0.6109 | 0.7002 |
+| Human — literary analysis | 0.1572 | 0.4971 | 0.3272 |
+| AI — literary analysis | 0.6884 | 0.5622 | 0.6253 |
+| Human — public spaces | 0.3218 | 0.4448 | 0.3833 |
+| AI — public spaces | 0.7155 | 0.5383 | 0.6269 |
+| Human — housing policy | 0.3953 | 0.4706 | 0.4330 |
+| AI — housing policy | 0.6013 | 0.5188 | 0.5601 |
+| Lightly edited AI — geology | 0.6762 | 0.5149 | 0.5956 |
 
-The combined scores in this table are the equal-weight averages before applying the disagreement safeguard.
+The lightly edited AI sample is a derivative of the original AI geology sample, not an independent example. It is included to observe how minor wording changes affect the signals.
 
 **What the results showed:**
 
-- The clearly AI sample received relatively high scores from both signals.
-- The clearly human sample received an extremely high model score despite a much lower style score. This demonstrates the model signal's vulnerability to predictable human writing.
-- The formal human sample also received a higher model score than style score.
-- The lightly edited AI sample received relatively neutral scores from both signals, showing that neither heuristic reliably identifies every AI-generated example.
+- The average combined score across the five independent AI samples was approximately **0.6223**.
+- The average combined score across the five human samples was approximately **0.4709**.
+- The difference between those averages was approximately **0.1513**.
+- All five AI samples scored higher than the average human score in this small preliminary set.
+- The book-summary pair had only a 0.0153 difference between its human and AI combined scores, demonstrating how closely the two types of writing can score.
+- The human book-summary sample received a combined score of 0.6849, illustrating the risk of a false-positive AI classification under the previous 0.65 threshold.
+- Raising the AI threshold to 0.69 moves that sample into the unsure range, while the paired AI sample, at 0.7002, remains classified as AI.
 
-The conventional human sample produced a signal difference of 0.4944, exceeding the initial disagreement cutoff. Under the proposed combining rule, it would receive `unsure` rather than `ai`.
-
-These four examples are calibration observations, not proof that the detector reliably distinguishes human and AI writing. The disagreement cutoff and thresholds will need to be evaluated against a larger test set.
+These results are useful for making an initial design decision, but the sample size is too small to establish reliable detection performance. The human literary-analysis sample also falls below the 100-word minimum specified for the final human-writing evaluation set. The calibration samples should therefore not be treated as the completed evaluation.
 
 ### Logging the three scores
 
-Each successfully classified submission's audit-log entry is intended to record all three scores:
+Each successfully classified submission's audit-log entry records all three scores:
 
 - `model_score`: Output from the GPT-2 perplexity-based signal.
 - `style_score`: Output from the stylometric signal.
-- `combined_score`: Result of the combining rule before classification.
+- `combined_score`: Result of the weighted combining rule before classification.
 
 Recording all three values makes it possible to investigate disagreements, understand unexpected classifications, and evaluate the individual signals separately.
 
