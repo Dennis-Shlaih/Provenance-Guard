@@ -11,7 +11,7 @@ The human-written evaluation set will consist of at least 10 samples of my own w
 **Target:** In each evaluation trial:
 
 - The average combined score for AI-generated samples must be at least 0.15 higher than the average combined score for human-written samples.
-- At least 7 out of every 10 AI-generated samples must receive a combined score higher than the average combined score of the human-written samples.
+- At least 70% of AI-generated samples must receive a combined score higher than the average combined score of the human-written samples.
 
 **Why this matters:** The difference in average scores measures overall separation between the two groups. The second requirement ensures that the separation is not driven only by a small number of unusually high-scoring AI samples. Together, these measurements evaluate both the overall score difference and its consistency across individual AI samples.
 
