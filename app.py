@@ -25,12 +25,14 @@ Routes:
 """
 
 import uuid
-import detector
 
 from flask import Flask, jsonify, request
 
 import audit
 import config
+import detector
+import stylometry
+import scoring
 
 app = Flask(__name__)
 
@@ -155,7 +157,7 @@ def health():
 # @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
-    Process a submission using the first signal only.
+    Process a submission using both signals and the combined score.
     """
 
     # 1. Read the incoming JSON
@@ -174,37 +176,48 @@ def submit():
     if not isinstance(creator_id, str) or not creator_id.strip():
         return jsonify({"error": "A valid creator_id is required."}), 400
 
+    creator_id = creator_id.strip()
+
     # 3. Generate a unique ID for this submission
     content_id = str(uuid.uuid4())
 
-    # 4. Run the first signal
+    # 4. Run both signals independently
     model_score = detector.model_signal(text)
+    style_score = stylometry.style_signal(text)
 
-    # 5. Set placeholders until the remaining milestones are implemented
-    guess = "unsure"
-    confidence = 0.0
-    label = "Pending"
+    # 5. Combine the two signals
+    combined_score = scoring.combine_signals(
+        model_score,
+        style_score
+    )
 
-    # 6. Write the decision to the audit log
+    # 6. Determine the classification
+    guess, label = scoring.score_to_label(combined_score)
+
+    # 7. Calculate heuristic confidence strength
+    confidence = round(abs(combined_score - 0.5) * 2, 4)
+
+    # 8. Write all three scores to the audit log
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
         guess=guess,
         model_score=model_score,
-        style_score=None,
-        combined_score=None,
+        style_score=style_score,
+        combined_score=combined_score,
         label=label,
         status="decided",
     )
 
-    # 7. Return the result
+    # 9. Return the result
     return jsonify({
         "content_id": content_id,
         "guess": guess,
         "confidence": confidence,
         "label": label,
         "model_score": model_score,
-        "style_score": None,
+        "style_score": style_score,
+        "combined_score": combined_score,
     })
 
 

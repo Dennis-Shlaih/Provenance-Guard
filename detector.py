@@ -72,6 +72,8 @@ def _load():
         _tokenizer = AutoTokenizer.from_pretrained(config.DETECTOR_MODEL)
         _model = AutoModelForCausalLM.from_pretrained(config.DETECTOR_MODEL)
         _model.eval()
+        print("Detector device:", next(_model.parameters()).device)
+        print("Detector dtype:", next(_model.parameters()).dtype)   
     except Exception as exc:  # noqa: BLE001
         raise DetectorUnavailable(
             f"Couldn't load '{config.DETECTOR_MODEL}': {exc}\n"
@@ -157,5 +159,11 @@ if __name__ == "__main__":
         print("(no text given — scoring a sample)\n")
 
     print(f"Loading {config.DETECTOR_MODEL} (first run downloads ~550 MB)…")
-    print(f"perplexity     {perplexity(text):.1f}")
-    print(f"model_signal   {model_signal(text):.4f}   (higher = more likely AI)")
+    for i in range(5):
+        ppl = perplexity(text)
+        score = 1.0 / (1.0 + (ppl / 45.0) ** 1.6)
+        print(
+            f"Run {i + 1}: "
+            f"perplexity={ppl:.8f}, "
+            f"model_signal={score:.8f}"
+            )

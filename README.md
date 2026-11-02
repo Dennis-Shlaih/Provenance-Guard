@@ -1,199 +1,120 @@
 # Provenance Guard
 
-> ### 👋 Start here
->
-> **New to this repo? Read [RUNNING.md](RUNNING.md) first.**
->
-> Once `python test.py` passes, in one terminal:
->
-> ```bash
-> python app.py
-> ```
->
-> and in another:
->
-> ```bash
-> curl -X POST http://127.0.0.1:5000/ping \
->   -H "Content-Type: application/json" \
->   -d '{"message": "hello"}'
-> ```
->
-> That's a web service. Something sent it text and it sent something back.
-> Everything this unit is filling in the middle.
->
-> **The rest of this file is your submission.** Fill it in as you go.
-
----
-
-<!-- ─────────────────────────────────────────────────────────────────────────
-     Unit 7 asks for the first five sections. Unit 8 adds the five below.
-
-     Everything is pasted as TEXT. A pasted curl response gets full credit;
-     a picture of your terminal gets none.
-     ───────────────────────────────────────────────────────────────────────── -->
-
-<!-- ═══════════════════════ UNIT 7 — THE BUILD ═══════════════════════ -->
-
 ## What This Does
-
+ 
 A submission moves through the following steps:
-
+ 
 1. **Receive the submission:** The `/submit` endpoint accepts the writer's text and `creator_id`.
 2. **Validate the input:** The service checks that the required fields are present and valid before processing the submission.
 3. **Generate a content ID:** The service assigns the submission a unique `content_id` so its decision can be identified and appealed later.
 4. **Calculate the model signal:** The detector analyzes the text's predictability using GPT-2 and returns a model score between 0 and 1.
-5. **Calculate the style signal:** The stylometry module measures sentence length variation, vocabulary variety, and punctuation density, then produces a style score between 0 and 1.
-6. **Combine and classify:** The scoring module combines both signals into one score and assigns one of three labels: `human`, `unsure`, or `ai`.
+5. **Calculate the style signal:** The stylometry module measures sentence-length variation and vocabulary variety and combines them into a style score between 0 and 1. Punctuation density is also calculated, but only as a diagnostic. It is not part of the score.
+6. **Combine and classify:** `scoring.py::combine_signals` merges both signals into one score, and `scoring.py::score_to_label` assigns one of three labels: `human`, `unsure`, or `ai`.
 7. **Record and return the decision:** The service records the content ID, creator ID, individual signal scores, combined score, label, and status in the audit log. The response returns the content ID, guess, confidence, label, model score, and style score.
-
 ---
-
+ 
 ## Signals and Scoring
-
-### Signal one — the model signal
-
-**What it measures:**
-
-The model signal uses GPT-2 to calculate the perplexity of a submission. Perplexity measures how predictable a sequence of words is to a language model. Lower perplexity means the model finds the text more predictable, while higher perplexity means it finds the text less predictable.
-
-The detector converts perplexity into a score between 0 and 1, where a higher score represents greater AI-likelihood according to this heuristic.
-
-**Why that might differ between human and AI writing:**
-
-AI-generated writing can sometimes have predictable word choices and sentence structures. This signal attempts to capture those patterns by measuring how predictable the submitted text is to a language model.
-
-**What it can't see:**
-
-The model cannot determine who actually wrote the submission. Predictable human writing, such as conventional wording or simple sentences, can receive a high AI-likelihood score. Unusual or complex AI-generated writing can receive a lower score because it is less predictable. The score is also affected by vocabulary, subject matter, and writing style.
-
-Perplexity is a measure of predictability, not proof of AI authorship or a calibrated probability that AI generated the text.
-
-### Signal two — the style signal
-
-**What it measures:**
-
+ 
+### Signal one: the model signal
+ 
+The model signal uses GPT-2 to calculate the perplexity of a submission. Perplexity measures how predictable a sequence of words is to a language model. Lower perplexity means the model finds the text more predictable. Higher perplexity means it finds the text less predictable.
+ 
+The detector converts perplexity into a score between 0 and 1 using a logistic curve on perplexity. A higher score means the text is more predictable to GPT-2 and therefore receives a higher AI-likelihood score under this heuristic.
+ 
+**Scoring parameters (in `detector.py`):**
+ 
+```text
+midpoint:   45.0   (perplexity that maps to a score of 0.5)
+steepness:  1.6    (how sharply the score moves either side of the midpoint)
+```
+ 
+These are the values supplied with the starter code. I have not changed them. The Rich Dad/Poor Dad human summary scores 0.8181 on this signal, which suggests the midpoint may be low for plain writing. Moving it would be a scoring decision, and I am not making that decision from a handful of samples that I also used to look for problems. Any change needs a fresh set and a note here.
+ 
+**What it can't see:** The model cannot determine who wrote a submission. Predictable human writing, such as conventional wording and simple sentences, can receive a high AI-likelihood score. Unusual or complex AI-generated writing can receive a lower score. The score is also affected by vocabulary, subject matter, and length. It is a measure of predictability, not proof of authorship and not a calibrated probability.
+ 
+### Signal two: the style signal
+ 
 The style signal measures writing characteristics without attempting to understand the meaning of the submission. It calculates three metrics:
-
-- **Sentence length spread:** Measures variation in sentence lengths using the coefficient of variation (standard deviation divided by mean sentence length). Lower variation may indicate more uniform writing.
-- **Type-token ratio:** Measures vocabulary variety by dividing the number of unique words by the total number of words. A lower ratio indicates more repeated vocabulary.
-- **Punctuation density:** Measures the proportion of characters classified as punctuation by Unicode. This includes ASCII punctuation and typographic characters such as em dashes, en dashes, curly quotation marks, curly apostrophes, and ellipses.
-
-**How the metrics are combined:**
-
-The final style score uses sentence length spread and type-token ratio, giving each transformed metric equal weight:
-
-- Sentence length spread is transformed using `1 / (1 + CV)`. Lower variation produces a higher AI-likelihood score.
-- Type-token ratio is transformed using `1 - TTR`. Lower vocabulary variety produces a higher AI-likelihood score.
-
-Punctuation density is still calculated and reported as a diagnostic metric, but it is excluded from the numerical style score. I chose not to include it because punctuation frequency alone does not provide a sufficiently defensible relationship with AI authorship.
-
-The resulting style score ranges from 0 to 1, where a higher score represents greater AI-likelihood according to the implemented heuristic.
-
-**Why that might differ between human and AI writing:**
-
-AI-generated writing may sometimes exhibit more consistent sentence lengths and repeated vocabulary patterns. Human writing may show more variation in sentence structure and vocabulary. These metrics attempt to capture some of those differences.
-
+ 
+- **Sentence-length spread:** variation in sentence lengths, measured as the coefficient of variation (CV) of sentence length in words. More uniform sentences receive a higher AI-likelihood score.
+- **Type-token ratio (TTR):** unique words divided by total words. Lower vocabulary variety receives a higher AI-likelihood score.
+- **Punctuation density:** the proportion of characters classified as punctuation by Unicode, including em dashes, en dashes, curly quotes and apostrophes, and ellipses.
+**How the metrics are combined:** the style score uses sentence-length spread and TTR with equal weight.
+ 
+- Sentence-length spread is transformed with `1 / (1 + CV)`. Lower variation gives a higher score.
+- TTR is transformed with `1 - TTR`. Lower variety gives a higher score.
+Punctuation density is calculated and reported as a diagnostic but is excluded from the style score. I could not defend a specific direction or strength of relationship between punctuation frequency and AI authorship.
+ 
 **What it can't see:**
-
-These measurements cannot establish authorship or understand why a writer chose particular words or sentence structures.
-
-Humans can write consistently and repeat vocabulary, while AI can deliberately vary sentence lengths and vocabulary. Type-token ratio is also sensitive to text length, generally decreasing as a text becomes longer. Punctuation habits vary by individual, genre, and editing tools; frequent use of a particular punctuation mark, including em dashes, is not proof of AI authorship.
-
-The metrics can also be affected by short submissions, which may not provide enough text to measure writing patterns reliably.
-
+ 
+- It cannot establish authorship or understand why a writer made a choice. Humans can write evenly and repeat vocabulary, and AI can deliberately vary sentence length and vocabulary.
+- Cheap changes that alter the shape of a text without changing what it says move this signal: typos, splitting or merging sentences, pasted quotations. The later attack set targets exactly this.
+- TTR falls as text gets longer, so texts of different lengths are not directly comparable. I keep calibration samples in a narrow length band and record word counts rather than correcting for length.
+- Very short texts do not give enough sentences for a meaningful CV.
+- Plain, uniform human writing (reports, summaries, instructions) can look AI-like to this signal.
 ### The combining rule
-
-**The design choice:**
-
-The model signal and style signal receive equal weight in the combined score. I kept the weights equal because the preliminary calibration did not provide enough evidence to justify favoring one signal through a different weighting scheme.
-
-The combined score is calculated as a weighted average of the two signals. The system does not currently use a disagreement safeguard. Instead, the classification thresholds determine whether the combined score is high enough for a confident label.
-
-I also raised the AI threshold from 0.65 to 0.69 after preliminary calibration. One human-written sample had a combined score of 0.6849, while one AI-generated sample had a combined score of 0.7002. The revised threshold places the human sample in the unsure range while retaining the AI sample as a high-confidence AI classification.
-
-This is a provisional threshold adjustment, not evidence of a reliable boundary between human and AI writing. The scores from the preliminary samples overlap, and the change favors reducing false-positive AI labels at the cost of classifying more AI-generated samples as unsure.
-
-The combined score is a heuristic AI-likelihood score, not a calibrated probability of authorship.
-
-**The numbers:**
-
-Current configuration:
-
+ 
+**Where it lives:** `scoring.py::combine_signals` applies the weights from `config.py`. `scoring.py::score_to_label` applies the thresholds.
+ 
+The two signals receive equal weight. I have too little evidence to justify favoring one.
+ 
 ```text
-Model signal weight:       0.50
-Style signal weight:       0.50
-Human threshold:           0.35
-AI threshold:              0.69
+Combined Score = (0.50 × Model Score) + (0.50 × Style Score)
 ```
-
-Combining formula:
-
-```text
-Combined Score =
-    (0.50 × Model Score) + (0.50 × Style Score)
-
-Score <= 0.35: human
-Score >= 0.69: ai
-Otherwise: unsure
-```
-
-The thresholds are inclusive: a score of exactly 0.35 receives the human label, and a score of exactly 0.69 receives the AI label.
-
-The three labels are interpreted as follows:
-
-- **Human:** Combined score is less than or equal to 0.35.
-- **Unsure:** Combined score is greater than 0.35 and less than 0.69.
-- **AI:** Combined score is greater than or equal to 0.69.
-
-**Where it lives:** `scoring.py::combine_signals`
-
-The model/style weights and classification thresholds are configurable in `config.py`. The combining function applies the configured weights, while `score_to_label` applies the classification thresholds.
-
-### Calibration results
-
-I conducted preliminary calibration using five human-written samples and five AI-generated samples on corresponding topics. The samples covered geology, a book summary, a literary analysis, public spaces, and housing policy.
-
-The table records the model score, style score, and equal-weight combined score for each sample.
-
-| Calibration input | Model score | Style score | Combined score |
-|---|---:|---:|---:|
-| Human — geology | 0.4749 | 0.5779 | 0.5264 |
-| AI — geology | 0.6828 | 0.5149 | 0.5989 |
-| Human — book summary | 0.8110 | 0.5588 | 0.6849 |
-| AI — book summary | 0.7894 | 0.6109 | 0.7002 |
-| Human — literary analysis | 0.1572 | 0.4971 | 0.3272 |
-| AI — literary analysis | 0.6884 | 0.5622 | 0.6253 |
-| Human — public spaces | 0.3218 | 0.4448 | 0.3833 |
-| AI — public spaces | 0.7155 | 0.5383 | 0.6269 |
-| Human — housing policy | 0.3953 | 0.4706 | 0.4330 |
-| AI — housing policy | 0.6013 | 0.5188 | 0.5601 |
-| Lightly edited AI — geology | 0.6762 | 0.5149 | 0.5956 |
-
-The lightly edited AI sample is a derivative of the original AI geology sample, not an independent example. It is included to observe how minor wording changes affect the signals.
-
-**What the results showed:**
-
-- The average combined score across the five independent AI samples was approximately **0.6223**.
-- The average combined score across the five human samples was approximately **0.4709**.
-- The difference between those averages was approximately **0.1513**.
-- All five AI samples scored higher than the average human score in this small preliminary set.
-- The book-summary pair had only a 0.0153 difference between its human and AI combined scores, demonstrating how closely the two types of writing can score.
-- The human book-summary sample received a combined score of 0.6849, illustrating the risk of a false-positive AI classification under the previous 0.65 threshold.
-- Raising the AI threshold to 0.69 moves that sample into the unsure range, while the paired AI sample, at 0.7002, remains classified as AI.
-
-These results are useful for making an initial design decision, but the sample size is too small to establish reliable detection performance. The human literary-analysis sample also falls below the 100-word minimum specified for the final human-writing evaluation set. The calibration samples should therefore not be treated as the completed evaluation.
-
-### Logging the three scores
-
-Each successfully classified submission's audit-log entry records all three scores:
-
-- `model_score`: Output from the GPT-2 perplexity-based signal.
-- `style_score`: Output from the stylometric signal.
-- `combined_score`: Result of the weighted combining rule before classification.
-
-Recording all three values makes it possible to investigate disagreements, understand unexpected classifications, and evaluate the individual signals separately.
-
-The audit log also preserves the resulting label and decision status so that later evaluations and appeals can be traced to the original decision.
+ 
+**Observation about the two signals:** the only matched human/AI pair in the current test results is the geology pair. On that pair the model signal separates the samples (AI 0.6828, human 0.4749), while the style signal ranks them the wrong way (human 0.5779, AI 0.5149). Across the four logged runs, style scores range only from 0.5149 to 0.5779, a narrow band, so with equal weights the style signal pulls the combined score toward the middle. One pair is not enough to say how the two signals behave in general. I am keeping equal weights as the baseline, recording this as an observation, and not re-weighting.
+ 
+**Disagreement safeguard:** an earlier draft proposed returning `unsure` when the two signals differ by 0.30 or more. It was removed because it was tuned on a single sample that was later replaced. The underlying risk remains: the Rich Dad/Poor Dad human summary has a model score of 0.8181 against a style score of 0.5652, a gap of about 0.25. This is something to revisit with a larger set.
+ 
+### Classification thresholds
+ 
+Configured in `config.py` and applied by `scoring.py::score_to_label`:
+ 
+| Combined score | `guess` |
+|---|---|
+| ≤ 0.35 | `human` |
+| > 0.35 and < 0.69 | `unsure` |
+| ≥ 0.69 | `ai` |
+ 
+Thresholds are inclusive: exactly 0.35 is `human` and exactly 0.69 is `ai`.
+ 
+**Threshold history (and why it does not hold up):** the AI threshold started at 0.65. I raised it to 0.69 because, in an earlier calibration run, the human-written Rich Dad/Poor Dad summary scored a combined 0.6849, while a paired AI sample scored 0.7002. That choice was fitted to a window between two samples. The earlier run is not reproduced in this README, and its figures came from text versions that were later replaced, so they should not be relied on. The version of the Rich Dad/Poor Dad summary I am keeping scores a combined 0.69165 and is classified `ai`, exceeding the threshold by about 0.0017. So the 0.69 threshold does not protect the sample it was chosen for.
+ 
+I am not raising the threshold again to fix this. That would repeat the same mistake on the same evidence. The sample stays in this document as a documented false positive. The 0.69 value stays as a provisional setting, to be evaluated on the separate human-written evaluation set, which must not be used for tuning.
+ 
+**Labels:** the user-facing `label` text in the audit log is placeholder wording. It will be finalized in a later milestone, so nothing in this document should be read as a decision about it.
+ 
+**Confidence field:** the API returns `confidence = abs(combined_score - 0.5) × 2`. This is distance from the midpoint, not a calibrated probability that the label is correct. Because the thresholds are asymmetric, a `human` at exactly 0.35 has confidence 0.30, which is lower than a borderline `ai` at 0.69 (0.38).
+ 
+### Integration test results (Milestone 4)
+ 
+These results come from submitting samples through the real `POST /submit` endpoint. This is an integration test, not an evaluation. The samples are not reused for tuning, and they are separate from the human-written set used for the false-positive criterion.
+ 
+| Sample | Model | Style | Combined | `guess` | Audit entry |
+|---|---:|---:|---:|---|---|
+| Human geology | 0.4749 | 0.5779 | 0.5264 | unsure | `209a1da8` |
+| Original AI geology | 0.6828 | 0.5149 | 0.5989 | unsure | `72842af9` |
+| Human Rich Dad/Poor Dad summary | 0.8181 | 0.5652 | 0.6917 | ai | `9f97ddde` |
+| Lightly edited AI geology | 0.6762 | 0.5149 | 0.5956 | unsure | `a345f846` |
+ 
+The lightly edited passage changes two phrases in the original AI geology sample. Its model score decreased from 0.6828 to 0.6762, while its style score remained 0.5149. The combined score decreased by 0.0033, and both versions received `unsure`. These two substitutions had little effect on the final classification, although this single comparison does not establish general resistance to editing.
+ 
+**What the results show:**
+ 
+- **Geology separation is small.** Original AI scored 0.5989 against 0.5264 for human, a gap of 0.0725. The model signal separates the pair by +0.2079, and the style signal gets it backwards by 0.0630. Both samples are `unsure`.
+- **Rich Dad/Poor Dad is a false positive.** The human-written summary was classified `ai` at a combined 0.6917 (stored as 0.69165), driven by a model score of 0.8181. It clears the threshold by about 0.0017, so the result is fragile. But it is the failure the system is meant to avoid, and it is exactly the plain, school-style writing the model signal is most likely to accuse.
+These results do not establish reliable human–AI separation. The model signal provides some separation on the geology pair, but the style signal works against it, and the human Rich Dad/Poor Dad sample crosses the AI threshold. The equal-weight combination does not eliminate these weaknesses. A larger, independent evaluation set is needed before drawing conclusions about detection performance or changing the scoring parameters.
+ 
+### Audit logging
+ 
+Each submission gets a unique `content_id`. Each log entry records:
+ 
+- `content_id` and `creator_id`
+- `model_score`, `style_score`, `combined_score`
+- `guess`: the short classification (`human`, `unsure`, or `ai`)
+- `label`: the user-facing message text (placeholder wording for now)
+- `timestamp` and `status`
+Recording all three scores makes it possible to investigate disagreements between the signals.
 
 ---
 
