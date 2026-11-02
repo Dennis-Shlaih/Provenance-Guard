@@ -1,134 +1,34 @@
-# Acceptance criteria — Provenance Guard
+## 1. False positives on human writing
 
-Five criteria that say what "working" means for this service, written in unit 7
-**before** you built it.
+**Target:** In each evaluation trial, no more than 1 out of 10 human-written submissions should receive the high-confidence AI label.
 
-**All five are yours.** None are given.
+The human-written evaluation set will consist of at least 10 samples of my own writing, written before the evaluation trials begin. The exact same samples will be used in every trial without modification. Each sample must contain at least 100 words.
 
-An acceptance criterion names a number or something plainly observable. *"The
-detector is accurate"* is an opinion — and perfect AI detection isn't possible
-anyway, so it's an opinion about something nobody can deliver. *"Of 10 pieces I
-wrote myself, at most 1 is labelled high-confidence AI"* is a criterion.
+**Why this matters:** Using pre-existing, personally written samples creates a fixed baseline that cannot be adjusted to fit evaluation results. Reusing the same samples across trials makes the results comparable and helps measure whether the system incorrectly flags genuine human writing.
 
-Under each, write a sentence or two on **why that target**. *"I allow at most 1
-false positive in 10 because on a writing site a wrong accusation costs more
-than a missed detection"* is a real answer.
+## 2. Score separation
 
-> Missing your own targets next unit costs you nothing. Setting a target so
-> easy you can't miss it does.
+**Target:** In each evaluation trial:
 
----
+- The average combined score for AI-generated samples must be at least 0.15 higher than the average combined score for human-written samples.
+- At least 7 out of every 10 AI-generated samples must receive a combined score higher than the average combined score of the human-written samples.
 
-## Pick numbers you can defend
+**Why this matters:** The difference in average scores measures overall separation between the two groups. The second requirement ensures that the separation is not driven only by a small number of unusually high-scoring AI samples. Together, these measurements evaluate both the overall score difference and its consistency across individual AI samples.
 
-**Cover at least three of these five areas.** They're prompts, not a form.
+## 3. Label coverage
 
-| Area | A question it could answer |
-|---|---|
-| False positives | How often may a human's writing get called AI? |
-| Score spread | How far apart should clearly-AI and clearly-human text score? |
-| Label coverage | Is every one of your three labels actually reachable? |
-| The appeal path | Does an appeal always change status and always get recorded? |
-| Bad input | What happens when `text` is missing, empty, or enormous? |
+**Target:** Each evaluation trial should produce all three possible labels at least once: `human`, `unsure`, and `ai`.
 
-Two things worth knowing before you pick numbers:
+**Why this matters:** The system should not classify every submission as AI or human. The unsure category is important because the signals may disagree or produce a score that does not justify a confident decision.
 
-- **The expensive mistake is one-sided.** Missing some AI text costs the site a
-  little. Accusing a real writer costs that person a lot. A criterion that
-  treats both errors as equally bad is describing a system nobody would ship.
-- **Unit 8 tests across three trials, and the target has to hold across all
-  three.** Your first signal runs a model, so identical input can score
-  differently twice. A target of "at most 1 in 10" against trials of 2, 1, 2 is
-  a **miss**.
+## 4. Appeal workflow
 
----
-## 1.
+**Target:** Every valid appeal submitted for an existing content ID should receive a successful response, create an audit-log entry with status `under_review`, and preserve the original decision in the audit history.
 
-<!-- Your criterion. It must name a number. -->
+**Why this matters:** Writers should have a way to challenge a decision. An appeal should create a review record rather than silently changing the original score or automatically rerunning the detector.
 
+## 5. Invalid submission handling
 
+**Target:** Every submission with missing, empty, or non-string text, or a missing or invalid creator ID, should receive a 4xx response and should not receive a normal classification.
 
-**Why this target:**
-
-
-
----
-
-## 2.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
-
----
-
-## 3.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
-
----
-
-## 4.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
-
----
-
-## 5.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
-
----
-
-<!-- ─────────────────────────────────────────────────────────────────────────
-     UNIT 8 — read this before you change anything above.
-
-     If a criterion turns out to be BROKEN rather than merely unmet, you can
-     revise it, and that earns credit. But never delete or edit the original
-     line. Add the revision underneath, like this:
-
-         ## 2. Uncertain cases land in the unsure band
-
-         The system handles uncertain cases well.
-
-         **Why this target:** ...
-
-         > **Revised in unit 8:** Text I judged borderline scores between
-         > 0.4 and 0.6 in at least 4 of 5 cases.
-         >
-         > **Why revised:** "well" gave me nothing to check. I couldn't
-         > reach a verdict from it at all.
-
-     That's a revision because the criterion couldn't be MEASURED.
-
-     Lowering a target because you missed it is not a revision, and it costs
-     you the point:
-
-         ✗ "At most 1 of 10 of my own pieces flagged as AI" → "at most 3
-            of 10", because 1 of 10 turned out to be hard.
-
-     A number you missed stays where it is, gets diagnosed, and gets a fix
-     attempted. That's where the points are.
-     ───────────────────────────────────────────────────────────────────────── -->
+**Why this matters:** Invalid requests should be rejected clearly rather than causing unexpected errors or creating misleading classification records.
