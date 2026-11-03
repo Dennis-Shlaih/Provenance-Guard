@@ -141,11 +141,6 @@ I chose this wording because an uncertain result should not make the writer feel
 
 **A submission**
 
-<!-- The response needs content_id, guess, confidence, label, AND both
-     signal scores - model_score and style_score. Unit 8's tools read those
-     two off the response, so leaving them out costs you next unit's
-     diagnostics. -->
-
 ```bash
 curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
@@ -153,7 +148,9 @@ curl -X POST http://127.0.0.1:5000/submit \
     "text": "One feature in the stories and cult practices for Demeter that highlights the connection between Greek gods and the natural world is the timing and content of the Thesmophoria and Haloa rituals. These practices were scheduled around the agricultural calendar and used explicitly sexual symbols. The women were ritually working alongside the earth’s agricultural cycle, using their bodies and words as instruments to influence whether the seeds took hold. This detail justifies existing social arrangements by naturalizing and reinforcing a gendered division of labor by grounding it in the actions of a goddess.",
     "creator_id": "milestone-5-human-label"
   }'
+
 ```
+
 **Response:**
 
 ```json
@@ -192,6 +189,7 @@ curl -X POST http://127.0.0.1:5000/appeal \
   "message": "Your appeal has been recorded and the submission is under review.",
   "status": "under_review"
 }
+
 ```
 
 **Audit log entries:**
@@ -208,6 +206,7 @@ Original decision:
   "combined_score": 0.6916500000000001,
   "status": "decided"
 }
+
 ```
 
 Appended appeal event:
@@ -220,6 +219,7 @@ Appended appeal event:
   "reasoning": "I wrote this submission myself. The classification does not reflect how I created the text, and I would like it reviewed.",
   "status": "under_review"
 }
+
 ```
 
 The appeal creates a separate audit event rather than overwriting the original decision. This preserves the original classification and records that the writer requested a review.
@@ -228,17 +228,17 @@ The appeal creates a separate audit event rather than overwriting the original d
 
 ## How I Used AI
 
-**Moment 1**
+**Moment 1: Reviewing my acceptance criteria (Claude)**
+ 
+- *What I asked for:* I wrote all five acceptance criteria myself, then pasted them into Claude and asked what it thought of them. I asked for a review of whether each one could be checked by someone who couldn't ask me what I meant. I did not ask it to write any criteria.
+- *What came back:* A criterion-by-criterion review. It said criterion 1 didn't say who wrote the ten human samples or what counted as the high-confidence AI label, and that one false positive in ten is a loose bar. It also said criterion 2 compares averages, which can hide overlapping scores, and that "combined score" and the 0.15 target needed to be defined and justified.
+- *What I changed:* I revised the criteria using that review and my own follow-up decisions. The human samples must be my own writing, fixed before each trial, and above a minimum length. I described 0.15 as a starting target that measures average separation, not whether each sample is classified correctly. I stated that label coverage shows the labels are reachable, not that they are accurate. I decided to verify appeals manually because the evaluation runner doesn't test them. I extended criterion 5 to cover malformed JSON and JSON that isn't an object, as well as the individual fields.
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
-
-**Moment 2**
-
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+**Moment 2: Generating the AI-written samples (ChatGPT)**
+ 
+- *What I asked for:* I used ChatGPT to generate the AI-written calibration samples. For each of my human-written samples I asked for an AI-written passage on the same topic (geology, the Rich Dad, Poor Dad summary, and others). Matching the topics keeps subject and vocabulary controlled, so each pair mostly compares writing style.
+- *What came back:* Essay-style paragraphs of roughly 100 to 160 words, close to the length of the matching human samples.
+- *What I changed:* I used the AI samples as generated, with one exception. For the lightly edited sample, I changed two phrases in the AI geology passage by hand. I treat that sample as a derivative of the original, not an independent one. All of my human samples are my own writing, and none of them were generated. All of the AI samples come from a single generator, so my results say nothing about how the detector handles text from other models.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
