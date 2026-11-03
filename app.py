@@ -182,7 +182,11 @@ def submit():
     content_id = str(uuid.uuid4())
 
     # 4. Run both signals independently
-    model_score = detector.model_signal(text)
+    try:
+        model_score = detector.model_signal(text)
+    except detector.TextTooShortError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     style_score = stylometry.style_signal(text)
 
     # 5. Combine the two signals

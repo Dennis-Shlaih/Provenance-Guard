@@ -112,7 +112,7 @@ Each submission gets a unique `content_id`. Each log entry records:
 - `content_id` and `creator_id`
 - `model_score`, `style_score`, `combined_score`
 - `guess`: the short classification (`human`, `unsure`, or `ai`)
-- `label`: the user-facing message text (placeholder wording for now)
+- `label`: the finalized user-facing message corresponding to the classification.
 - `timestamp` and `status`
 Recording all three scores makes it possible to investigate disagreements between the signals.
 
