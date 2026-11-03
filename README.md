@@ -120,11 +120,6 @@ Recording all three scores makes it possible to investigate disagreements betwee
 
 ## Label Variants
 
-<!-- The exact text of all three labels, as a reader would see them, and the
-     score range each covers.
-
-     Write them for someone who has never heard the word "threshold". -->
-
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
 | high-confidence human | 0.00–0.35  | This text has patterns that are more consistent with human writing. This is not proof of who wrote it. |
@@ -368,17 +363,17 @@ that produced it:
 
      SUBMISSION CHECKLIST — unit 7
 
-       [ ] criteria.md has five numbered criteria, each naming a target
-       [ ] Each has a reason underneath
-       [ ] POST /submit returns content_id, guess, confidence, label,
+       [X] criteria.md has five numbered criteria, each naming a target
+       [X] Each has a reason underneath
+       [X] POST /submit returns content_id, guess, confidence, label,
            model_score and style_score
-       [ ] Two signals that measure DIFFERENT things, each with a named blind spot
-       [ ] Three label variants, all reachable, written out in full
-       [ ] POST /appeal changes status and writes to the log
-       [ ] Signals and Scoring names scoring.py::combine_signals
-       [ ] Sample Run: a submission AND an appeal, as pasted text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN
+       [X] Two signals that measure DIFFERENT things, each with a named blind spot
+       [X] Three label variants, all reachable, written out in full
+       [X] POST /appeal changes status and writes to the log
+       [X] Signals and Scoring names scoring.py::combine_signals
+       [X] Sample Run: a submission AND an appeal, as pasted text
+       [X] At least four new commits
+       [X] Repository URL submitted — WRITE IT DOWN
 
      SUBMISSION CHECKLIST — unit 8
 
