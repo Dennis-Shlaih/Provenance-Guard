@@ -224,31 +224,67 @@ def submit():
 @app.post("/appeal")
 def appeal():
     """
-    A writer says you got it wrong. ← TODO — Milestone 5
+    Record a writer's appeal against an earlier decision.
 
     Expects JSON:
         {"content_id": "...", "reasoning": "..."}
-
-    Should:
-      1. Check the content_id actually exists — `audit.entries_for(id)` tells
-         you. A typo here fails silently and looks like a broken endpoint,
-         which is the single most common way this milestone eats an hour.
-      2. Record the appeal with `audit.log_appeal(...)`, which moves the item
-         to `under_review`.
-      3. Confirm to the writer. No automatic re-checking needed.
-
-    This is the smallest endpoint in the project and the one that matters most
-    to the person on the other end. It's the only thing standing between a
-    wrong accusation and nothing at all.
     """
-    payload = request.get_json(silent=True) or {}
 
-    # TODO: delete this and build the route.
+    # 1. Read and validate the JSON body
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "Request body must be a JSON object."
+        }), 400
+
+    content_id = payload.get("content_id")
+    reasoning = payload.get("reasoning")
+
+    if not isinstance(content_id, str) or not content_id.strip():
+        return jsonify({
+            "error": "A valid content_id is required."
+        }), 400
+
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        return jsonify({
+            "error": "A non-empty reasoning field is required."
+        }), 400
+
+    content_id = content_id.strip()
+    reasoning = reasoning.strip()
+
+    # 2. Find the original decision
+    related_entries = audit.entries_for(content_id)
+
+    original_decision = next(
+        (
+            entry for entry in related_entries
+            if entry.get("status") == "decided"
+            and entry.get("guess") is not None
+        ),
+        None,
+    )
+
+    if original_decision is None:
+        return jsonify({
+            "error": "submission_not_found",
+            "message": "No original decision was found for this content_id."
+        }), 404
+
+    # 3. Record the appeal as a new audit event
+    appeal_entry = audit.log_appeal(
+        content_id=content_id,
+        creator_id=original_decision["creator_id"],
+        reasoning=reasoning,
+    )
+
+    # 4. Confirm that the appeal was recorded
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+        "content_id": content_id,
+        "status": appeal_entry["status"],
+        "message": "Your appeal has been recorded and the submission is under review."
+    }), 200
 
 
 # ── Already works ─────────────────────────────────────────────────────────────

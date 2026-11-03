@@ -82,13 +82,13 @@ Thresholds are inclusive: exactly 0.35 is `human` and exactly 0.69 is `ai`.
  
 I am not raising the threshold again to fix this. That would repeat the same mistake on the same evidence. The sample stays in this document as a documented false positive. The 0.69 value stays as a provisional setting, to be evaluated on the separate human-written evaluation set, which must not be used for tuning.
  
-**Labels:** the user-facing `label` text in the audit log is placeholder wording. It will be finalized in a later milestone, so nothing in this document should be read as a decision about it.
+**Labels:** The service returns one of three reader-facing messages corresponding to the human, unsure, and ai classifications. The exact wording and score ranges are documented under Label Variants.
  
 **Confidence field:** the API returns `confidence = abs(combined_score - 0.5) × 2`. This is distance from the midpoint, not a calibrated probability that the label is correct. Because the thresholds are asymmetric, a `human` at exactly 0.35 has confidence 0.30, which is lower than a borderline `ai` at 0.69 (0.38).
  
-### Integration test results (Milestone 4)
+### Integration test results
  
-These results come from submitting samples through the real `POST /submit` endpoint. This is an integration test, not an evaluation. The samples are not reused for tuning, and they are separate from the human-written set used for the false-positive criterion.
+These results come from submitting samples through the real `POST /submit` endpoint. This is an integration test, not an evaluation. These submissions were used to verify the integration pipeline and investigate scoring behavior. They are development samples, not an independent evaluation set.
  
 | Sample | Model | Style | Combined | `guess` | Audit entry |
 |---|---:|---:|---:|---|---|
@@ -127,23 +127,17 @@ Recording all three scores makes it possible to investigate disagreements betwee
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00–0.35  | This text has patterns that are more consistent with human writing. This is not proof of who wrote it. |
+| unsure | Above 0.35 and below 0.69 | We couldn't confidently distinguish between human and AI-generated writing. Your writing may have been entirely human-written. |
+| high-confidence AI | 0.69–1.00 | This text has patterns that are strongly associated with AI-generated writing. This is not proof that AI was used. |
 
 **Why I worded the "unsure" one this way:**
-<!-- It's the hardest of the three. It has to admit uncertainty without
-     sounding like an accusation, because the person reading it may well have
-     written every word themselves. -->
 
-
+I chose this wording because an uncertain result should not make the writer feel accused of using AI. The system cannot reliably determine who wrote something, so the message explicitly acknowledges that the writing may have been entirely human-written. It also avoids presenting uncertainty as a negative judgment about the writer or their work.
 
 ---
 
 ## Sample Run
-
-<!-- One submission and one appeal, pasted as text: the request, the response,
-     and the log entries. -->
 
 **A submission**
 
@@ -153,36 +147,82 @@ Recording all three scores makes it possible to investigate disagreements betwee
      diagnostics. -->
 
 ```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
+curl -X POST http://127.0.0.1:5000/submit \
   -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+  -d '{
+    "text": "One feature in the stories and cult practices for Demeter that highlights the connection between Greek gods and the natural world is the timing and content of the Thesmophoria and Haloa rituals. These practices were scheduled around the agricultural calendar and used explicitly sexual symbols. The women were ritually working alongside the earth’s agricultural cycle, using their bodies and words as instruments to influence whether the seeds took hold. This detail justifies existing social arrangements by naturalizing and reinforcing a gendered division of labor by grounding it in the actions of a goddess.",
+    "creator_id": "milestone-5-human-label"
+  }'
 ```
+**Response:**
 
 ```json
+{
+  "combined_score": 0.32715,
+  "confidence": 0.3457,
+  "content_id": "819d9a8a-da66-44c3-ad6a-fbfe94ef4268",
+  "guess": "human",
+  "label": "This text has patterns that are more consistent with human writing. This is not proof of who wrote it.",
+  "model_score": 0.1572,
+  "style_score": 0.4971
+}
 
 ```
 
-**An appeal**
+### Appeal Example
+
+A writer can appeal an existing classification by submitting the original `content_id` and an explanation.
+
+**Request:**
 
 ```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
+curl -X POST http://127.0.0.1:5000/appeal \
   -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+  -d '{
+    "content_id": "9f97ddde-a1a5-4bac-b4f7-7849ecf9b14f",
+    "reasoning": "I wrote this submission myself. The classification does not reflect how I created the text, and I would like it reviewed."
+  }'
 ```
+
+**Response:**
 
 ```json
-
+{
+  "content_id": "9f97ddde-a1a5-4bac-b4f7-7849ecf9b14f",
+  "message": "Your appeal has been recorded and the submission is under review.",
+  "status": "under_review"
+}
 ```
 
-**What the log shows afterwards**
+**Audit log entries:**
 
-```bash
-$ curl "http://127.0.0.1:5000/log?limit=3"
-```
+Original decision:
 
 ```json
-
+{
+  "content_id": "9f97ddde-a1a5-4bac-b4f7-7849ecf9b14f",
+  "creator_id": "milestone-4-test",
+  "guess": "ai",
+  "model_score": 0.8181,
+  "style_score": 0.5652,
+  "combined_score": 0.6916500000000001,
+  "status": "decided"
+}
 ```
+
+Appended appeal event:
+
+```json
+{
+  "content_id": "9f97ddde-a1a5-4bac-b4f7-7849ecf9b14f",
+  "creator_id": "milestone-4-test",
+  "event": "appeal",
+  "reasoning": "I wrote this submission myself. The classification does not reflect how I created the text, and I would like it reviewed.",
+  "status": "under_review"
+}
+```
+
+The appeal creates a separate audit event rather than overwriting the original decision. This preserves the original classification and records that the writer requested a review.
 
 ---
 
