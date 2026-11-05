@@ -241,25 +241,21 @@ The appeal creates a separate audit event rather than overwriting the original d
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 10 per minute, 200 per day
 
 **Why those numbers and not others:**
-<!-- Think about two people: a real writer submitting their own work a few
-     times an hour, and a script sending a thousand variations to map your
-     thresholds. Your numbers have to be liveable for the first and hostile to
-     the second. -->
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+These limits balance normal usage with protection against automated abuse. A legitimate writer might submit several pieces of work within an hour, so 10 submissions per minute provides room for occasional bursts without unnecessarily blocking them. The daily limit of 200 allows repeated use throughout the day while restricting sustained automated requests. A script attempting to send thousands of variations to map the detection thresholds would quickly encounter the limits.
 
-**The run of status codes when I pushed past it:**
+**What a caller counts as:** 
 
-<!-- python run_attacks.py --flood 15 -->
+Requests are grouped by their creator_id, so submissions from the same creator share a rate-limit bucket. This makes the limits consistent across requests from the same identified writer. However, a script could potentially bypass this approach by generating different creator IDs, which is a limitation of per-creator rate limiting.
 
-```
+Command: python run_attacks.py --flood 15
 
-```
+200 200 200 200 200 200 200 200 200 200 429 429 429 429 429
+
+```Results: 10 successful submissions and 5 rate-limited submissions.```
 
 ---
 
