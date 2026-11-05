@@ -154,7 +154,7 @@ def health():
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
 @app.post("/submit")
-# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+@limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
     Process a submission using both signals and the combined score.
@@ -165,15 +165,34 @@ def submit():
 
     # 2. Validate the request body
     if not isinstance(payload, dict):
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="invalid_request_body",
+        )
         return jsonify({"error": "Request body must be a JSON object."}), 400
 
     text = payload.get("text")
     creator_id = payload.get("creator_id")
 
+    # Use a safe creator ID for rejection logging.
+    log_creator_id = (
+        creator_id.strip()
+        if isinstance(creator_id, str) and creator_id.strip()
+        else "unknown"
+    )
+
     if not isinstance(text, str) or not text.strip():
+        audit.log_rejection(
+            creator_id=log_creator_id,
+            reason="missing_or_invalid_text",
+        )
         return jsonify({"error": "A non-empty text field is required."}), 400
 
     if not isinstance(creator_id, str) or not creator_id.strip():
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="missing_or_invalid_creator_id",
+        )
         return jsonify({"error": "A valid creator_id is required."}), 400
 
     creator_id = creator_id.strip()
@@ -185,6 +204,11 @@ def submit():
     try:
         model_score = detector.model_signal(text)
     except detector.TextTooShortError as exc:
+        audit.log_rejection(
+            creator_id=creator_id,
+            reason="text_too_short",
+            detail=str(exc),
+        )
         return jsonify({"error": str(exc)}), 400
 
     style_score = stylometry.style_signal(text)
@@ -225,6 +249,7 @@ def submit():
     })
 
 
+
 @app.post("/appeal")
 def appeal():
     """
@@ -238,6 +263,10 @@ def appeal():
     payload = request.get_json(silent=True)
 
     if not isinstance(payload, dict):
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="invalid_appeal_request_body",
+        )
         return jsonify({
             "error": "Request body must be a JSON object."
         }), 400
@@ -246,11 +275,20 @@ def appeal():
     reasoning = payload.get("reasoning")
 
     if not isinstance(content_id, str) or not content_id.strip():
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="invalid_appeal_content_id",
+        )
         return jsonify({
             "error": "A valid content_id is required."
         }), 400
 
     if not isinstance(reasoning, str) or not reasoning.strip():
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="missing_or_invalid_appeal_reasoning",
+            content_id=content_id,
+        )
         return jsonify({
             "error": "A non-empty reasoning field is required."
         }), 400
@@ -271,17 +309,15 @@ def appeal():
     )
 
     if original_decision is None:
+        audit.log_rejection(
+            creator_id="unknown",
+            reason="appeal_submission_not_found",
+            content_id=content_id,
+        )
         return jsonify({
             "error": "submission_not_found",
             "message": "No original decision was found for this content_id."
         }), 404
-
-    # 3. Record the appeal as a new audit event
-    appeal_entry = audit.log_appeal(
-        content_id=content_id,
-        creator_id=original_decision["creator_id"],
-        reasoning=reasoning,
-    )
 
     # 4. Confirm that the appeal was recorded
     return jsonify({
