@@ -11,7 +11,7 @@ it down. `run_eval.py` runs everything here three times.
 Two are filled in as examples. Replace them with what your criteria actually
 need — these are a shape, not a set.
 
-A scenario carries **either** of these:
+A scenario carries **one** of these:
 
     "texts"   a list of strings. Each is sent as {"text": ..., "creator_id": ...}
               with a creator_id made up for you. Use this for most criteria.
@@ -20,6 +20,10 @@ A scenario carries **either** of these:
               when the malformed request IS the point — empty text, no `text`
               field at all, something enormous. A bad-input criterion needs it,
               because you cannot express "the field is missing" as a string.
+
+    "raw_bodies" a list of request-body strings, sent without JSON encoding.
+                 Use this for malformed JSON or top-level JSON values that
+                 cannot be represented as request-body dictionaries.
 """
 
 # ------------------------------------------------------------
@@ -89,15 +93,14 @@ SCENARIOS = [
         "texts": HUMAN_SAMPLES,
     },
     {
-        "name": "ai generated writing",
+        "name": "score separation",
         "criterion": 2,
-        "texts": AI_SAMPLES,
+        "human_count": len(HUMAN_SAMPLES),
+        "texts": HUMAN_SAMPLES + AI_SAMPLES,
     },
     {
         "name": "label coverage",
         "criterion": 3,
-        # Reuse the same fixed human and AI samples.
-        # This checks whether all three labels are reachable.
         "texts": HUMAN_SAMPLES + AI_SAMPLES,
     },
     {
@@ -138,6 +141,15 @@ SCENARIOS = [
             {"text": "Hi", "creator_id": "eval_bad_short"},
         ],
     },
+    {
+        "name": "invalid raw request bodies",
+        "criterion": 5,
+        "raw_bodies": [
+            "{invalid json",
+            "[]",
+            '"just a JSON string"',
+        ],
+    },
 ]
 
 
@@ -145,26 +157,54 @@ def validate() -> list[str]:
     """
     Complain about anything malformed, before a long run rather than during.
 
-    A "bodies" scenario is deliberately exempt from the empty check — an empty
-    string is the whole point of a bad-input case, and refusing to run one
-    would make that criterion untestable.
+    A "bodies" scenario is deliberately exempt from the empty-text check. Each
+    scenario must use exactly one of texts, bodies, or raw_bodies.
     """
     problems = []
     for i, scenario in enumerate(SCENARIOS, 1):
         if not scenario.get("name"):
             problems.append(f"scenario {i} has no name")
 
-        texts = scenario.get("texts")
-        bodies = scenario.get("bodies")
+        formats = [
+            format_name
+            for format_name in ("texts", "bodies", "raw_bodies")
+            if format_name in scenario
+        ]
 
-        if texts and bodies:
+        if len(formats) > 1:
             problems.append(
-                f"scenario {i} ('{scenario.get('name')}') has both texts and "
-                f"bodies — pick one"
+                f"scenario {i} ('{scenario.get('name')}') specifies multiple "
+                f"request formats ({', '.join(formats)}) — pick one"
             )
             continue
 
-        if bodies:
+        if not formats:
+            problems.append(f"scenario {i} has no texts, bodies, or raw_bodies")
+            continue
+
+        request_format = formats[0]
+        if request_format == "raw_bodies":
+            raw_bodies = scenario["raw_bodies"]
+            if not isinstance(raw_bodies, list) or not raw_bodies:
+                problems.append(
+                    f"scenario {i} ('{scenario.get('name')}') must have a "
+                    f"non-empty list of raw_bodies"
+                )
+                continue
+            for j, body in enumerate(raw_bodies, 1):
+                if not isinstance(body, str):
+                    problems.append(
+                        f"scenario {i}, raw body {j} is not a string"
+                    )
+            continue
+
+        if request_format == "bodies":
+            bodies = scenario["bodies"]
+            if not bodies:
+                problems.append(
+                    f"scenario {i} ('{scenario.get('name')}') has no bodies"
+                )
+                continue
             for j, body in enumerate(bodies, 1):
                 if not isinstance(body, dict):
                     problems.append(
@@ -173,8 +213,9 @@ def validate() -> list[str]:
                     )
             continue
 
+        texts = scenario["texts"]
         if not texts:
-            problems.append(f"scenario {i} has no texts and no bodies")
+            problems.append(f"scenario {i} ('{scenario.get('name')}') has no texts")
             continue
 
         for j, text in enumerate(texts, 1):

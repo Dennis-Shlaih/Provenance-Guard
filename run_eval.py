@@ -29,6 +29,8 @@ from pathlib import Path
 
 import config
 
+import scoring
+
 # Windows consoles often run a codepage that can't print every character in
 # this file's help text. Without this, `--help` ends in a UnicodeEncodeError
 # traceback instead of the help — which is a miserable first thing to hit.
@@ -47,10 +49,11 @@ def bodies_for(scenario):
     The request bodies one scenario sends.
 
     A "texts" scenario gets a creator_id made up for it. A "bodies" scenario is
-    sent exactly as written, which is how a bad-input criterion says things a
-    string can't — no `text` field, a null, something enormous.
+    sent as JSON, while a "raw_bodies" scenario is sent as raw request data.
     """
-    if scenario.get("bodies"):
+    if "raw_bodies" in scenario:
+        return list(scenario["raw_bodies"])
+    if "bodies" in scenario:
         return list(scenario["bodies"])
     return [
         {"text": text, "creator_id": f"eval_{scenario['name'][:12]}_{i}"}
@@ -60,6 +63,8 @@ def bodies_for(scenario):
 
 def describe(body):
     """A short, readable note of what was sent — for the report."""
+    if isinstance(body, str):
+        return body[:120]
     if set(body) == {"text", "creator_id"} and isinstance(body.get("text"), str):
         text = body["text"]
         return text[:70] if text else "(empty text)"
@@ -115,16 +120,44 @@ def main():
             results = []
             for i, body in enumerate(bodies_for(scenario), 1):
                 preview = describe(body)
+                sample_type = None
+                if scenario.get("human_count") is not None:
+                    sample_type = "human" if i <= scenario["human_count"] else "ai"
                 try:
-                    response = requests.post(f"{args.url}/submit", json=body,
-                                             timeout=args.timeout)
-                    payload = response.json() if response.content else {}
+                    if "raw_bodies" in scenario:
+                        response = requests.post(
+                            f"{args.url}/submit",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            timeout=args.timeout,
+                        )
+                    else:
+                         response = requests.post(
+                            f"{args.url}/submit",
+                            json=body,
+                            headers={"Content-Type": "application/json"},
+                            timeout=args.timeout,
+                        )
+                    try:
+                        payload = response.json() if response.content else {}
+                    except ValueError:
+                        payload = {}
+                    model_score = payload.get("model_score")
+                    style_score = payload.get("style_score")
+                    combined_score = None
+                    if model_score is not None and style_score is not None:
+                        combined_score = scoring.combine_signals(
+                            model_score,
+                            style_score,
+                        )
                     results.append({
                         "status": response.status_code,
+                        "sample_type": sample_type,
                         "guess": payload.get("guess"),
                         "confidence": payload.get("confidence"),
-                        "model_score": payload.get("model_score"),
-                        "style_score": payload.get("style_score"),
+                        "model_score": model_score,
+                        "style_score": style_score,
+                        "combined_score": combined_score,
                         "label": payload.get("label"),
                         "sent": preview,
                     })
