@@ -352,36 +352,48 @@ FP05 was a false positive: human-written technical documentation was classified 
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. False positives on my own writing | No more than 1 of 10 human samples labeled `ai` | 0/10 `ai` | 0/10 `ai` | 0/10 `ai` | **MET** Nothing was ever labeled `ai`. See criterion 3. |
+| 2. Score separation | AI–human average combined-score gap ≥ 0.15; ≥ 7/10 AI scores above human mean | gap +0.0019; 5/10 | same | same | **MISSED** |
+| 3. Label coverage | At least one each of `human`, `unsure`, and `ai` | 20/20 `unsure`; 0 `ai`, 0 `human` | same | same | **MISSED** |
+| 4. Appeal workflow | Valid appeal succeeds, logs `under_review`, and preserves original decision | 18/18 | 18/18 | 18/18 | **MET** (after a fix, see Diagnoses) |
+| 5. Invalid input | Invalid requests return 4xx, create no decision, and log a rejection | all 400 | all 400 | all 400 | **MET** |
 
-**Real output from one trial**, pasted as text, naming the file and function
-that produced it:
+
+**Real output from one trial**, produced by `app.py::submit` via `run_eval.py::main` (trial 1, first human sample):
 
 ```json
-
+[
+  {
+    "status": 200,
+    "sample_type": null,
+    "guess": "unsure",
+    "confidence": 0.2275,
+    "model_score": 0.7382,
+    "style_score": 0.4893,
+    "combined_score": 0.61375,
+    "label": "We couldn't confidently distinguish between human and AI-generated writing. Your writing may have been entirely human-written.",
+    "sent": "Harlem has been one of the most important centers of Black cultural an"
+  }
+]
 ```
 
 **Diagnoses**
 
-<!-- For each miss AND each broken attack: the stage and the mechanism.
+*Criterion 2 (score separation).* Human writing averaged 0.5569 combined and AI writing 0.5588, a gap of +0.0019 against a target of 0.15. The two signals don't agree with each other:
+- The model signal separates only slightly (gap +0.0284).
+- The style signal points the wrong way (gap −0.0247), so AI samples read as slightly more human than my human samples.
+- Averaging at 0.5/0.5 cancels the small model-signal gap against the inverted style gap.
+- The style signal is the larger problem. [Check per-sample style scores in the log and state which sample property drives it. For example, if my AI samples vary their sentence length more than my human samples, that raises the sentence-length variation, which my style score treats as human.]
 
-     Your service has five stages: the route, signal one, signal two, the
-     combining rule, and the label mapping.
+*Criterion 3 (label coverage).* All 20 texts landed in `unsure`. Combined scores ran from 0.4193 to 0.6763, and the `ai` threshold is 0.69 while `human` is ≤ 0.35. The observed range sits entirely between the two thresholds, so neither label was reachable.
+- This is a symptom of criterion 2, not a separate fault in the label mapping.
+- With a gap of 0.002, moving the thresholds would not fix it. It would just split the same overlapping scores differently.
 
-     Not a diagnosis:  "The evasion attacks got through."
-     A diagnosis:      "Four evasion inputs got through. All four had typos
-                        added to AI-generated text. My second signal measures
-                        word variety, and typos raise word variety — so it read
-                        them as more human. My combining rule weights that
-                        signal at 0.6, so it dragged the whole score down."
+*Criterion 1.* It passes only because nothing is ever labeled `ai`. It says nothing about false-positive behavior until criterion 3 is fixed.
 
-     Look for a pattern. Five failures on one signal is one problem, not five. -->
+*Criterion 4 (appeal), found and fixed during testing.* In an earlier run `/appeal` returned 500 on every valid appeal and appended nothing. [One line: what the cause was and which file you changed.] After the fix, all three trials passed, including six invalid-appeal cases (404 or 400). Rejected appeals are logged with status `rejected`, not `under_review`. Limitation: I only appealed `unsure` decisions, because the service produces no other label on this set.
 
-
+*Criterion 5.* The first run returned 429s on the invalid-input cases, because the rate limiter ran before validation and masked the 400s. I changed that order, and the rerun returned 400 for every case.
 
 ---
 
