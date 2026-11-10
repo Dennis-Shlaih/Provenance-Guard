@@ -318,6 +318,13 @@ def appeal():
             "error": "submission_not_found",
             "message": "No original decision was found for this content_id."
         }), 404
+    
+    # 3. Record the appeal without changing the original decision
+    appeal_entry = audit.log_appeal(
+        content_id=content_id,
+        creator_id=original_decision["creator_id"],
+        reasoning=reasoning,
+    )
 
     # 4. Confirm that the appeal was recorded
     return jsonify({
@@ -325,7 +332,6 @@ def appeal():
         "status": appeal_entry["status"],
         "message": "Your appeal has been recorded and the submission is under review."
     }), 200
-
 
 # ── Already works ─────────────────────────────────────────────────────────────
 

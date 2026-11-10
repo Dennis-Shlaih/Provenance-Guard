@@ -13,8 +13,8 @@ Fill in `scenarios.py` first — that's where you say what each criterion needs
 run against it. A criterion about false positives needs your own writing. One
 about label coverage needs inputs across the score range.
 
-!! Three trials, and **your first signal runs a model, so identical input can
-score differently twice.** That's exactly why repeats matter here.
+!! Three trials. Repeating the same inputs helps show whether the
+results are consistent across runs. That's exactly why repeats matter here.
 
 This does the sending and the recording. It does not decide whether a trial
 passed — that depends on the criterion you wrote, so the Verdict column comes
@@ -26,10 +26,12 @@ import datetime as dt
 import json
 import sys
 from pathlib import Path
+import time
 
 import config
 
 import scoring
+
 
 # Windows consoles often run a codepage that can't print every character in
 # this file's help text. Without this, `--help` ends in a UnicodeEncodeError
@@ -102,7 +104,8 @@ def main():
         sys.exit(1)
 
     try:
-        requests.get(f"{args.url}/health", timeout=5)
+        health = requests.get(f"{args.url}/health", timeout=5)
+        health.raise_for_status()
     except Exception:  # noqa: BLE001
         print(f"Nothing answering at {args.url}. Start it:  python app.py",
               file=sys.stderr)
@@ -112,17 +115,41 @@ def main():
         print(f"!! {args.trials} trial(s). The submission asks for three.\n")
 
     rows = []
+    last_criterion_5_run = None
+
     for scenario in scenarios.SCENARIOS:
         print(f"\n{scenario['name']}  (criterion {scenario.get('criterion') or '—'})")
 
         trials = []
         for trial in range(1, args.trials + 1):
+
+            # Wait between complete Criterion 5 trials, not individual requests.
+            if scenario.get("criterion") == 5:
+                if last_criterion_5_run is None:
+                    # Allow any requests from earlier manual tests to expire.
+                    wait = 65
+                else:
+                    elapsed = time.monotonic() - last_criterion_5_run
+                    wait = max(0, 65 - elapsed)
+
+                if wait > 0:
+                    print(
+                        f"Waiting {wait:.1f} seconds for the "
+                        "Criterion 5 rate-limit window to reset..."
+                    )
+                    time.sleep(wait)
+
             results = []
+
             for i, body in enumerate(bodies_for(scenario), 1):
                 preview = describe(body)
                 sample_type = None
+
                 if scenario.get("human_count") is not None:
-                    sample_type = "human" if i <= scenario["human_count"] else "ai"
+                    sample_type = (
+                        "human" if i <= scenario["human_count"] else "ai"
+                    )
+
                 try:
                     if "raw_bodies" in scenario:
                         response = requests.post(
@@ -132,24 +159,28 @@ def main():
                             timeout=args.timeout,
                         )
                     else:
-                         response = requests.post(
+                        response = requests.post(
                             f"{args.url}/submit",
                             json=body,
                             headers={"Content-Type": "application/json"},
                             timeout=args.timeout,
                         )
+
                     try:
                         payload = response.json() if response.content else {}
                     except ValueError:
                         payload = {}
+
                     model_score = payload.get("model_score")
                     style_score = payload.get("style_score")
                     combined_score = None
+
                     if model_score is not None and style_score is not None:
                         combined_score = scoring.combine_signals(
                             model_score,
                             style_score,
                         )
+
                     results.append({
                         "status": response.status_code,
                         "sample_type": sample_type,
@@ -161,9 +192,18 @@ def main():
                         "label": payload.get("label"),
                         "sent": preview,
                     })
+
                 except Exception as exc:  # noqa: BLE001
-                    results.append({"status": None, "error": f"{type(exc).__name__}: {exc}",
-                                    "sent": preview})
+                    results.append({
+                        "status": None,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "sent": preview,
+                    })
+
+            # Record the completion time, so the next Criterion 5 trial
+            # starts at least 65 seconds after this one finishes.
+            if scenario.get("criterion") == 5:
+                last_criterion_5_run = time.monotonic()
 
             trials.append(results)
             guesses = [r.get("guess") or "—" for r in results]
@@ -172,6 +212,7 @@ def main():
         rows.append({"scenario": scenario, "trials": trials})
 
     write_report(rows, args)
+
 
 
 def write_report(rows, args):

@@ -16,7 +16,8 @@ trial:
        - one new entry was appended, with status "under_review"
        - the original entry still matches what /submit returned
   5. sends invalid appeals (unknown id, missing/empty/whitespace/non-string
-     reasoning, missing id) and checks each gets a 4xx and adds no log entry
+   reasoning, missing id) and checks each gets a 4xx and creates a rejection
+   entry rather than a normal decision or appeal entry
 
 It writes results/appeal_<stamp>_<label>.md in the same style as run_eval.py.
 It does not decide the verdict; read the checks and fill in the table.
@@ -32,9 +33,11 @@ import scenarios
 
 DEFAULT_URL = f"http://{config.HOST}:{config.PORT}"
 VALID_REASONING = "I wrote this myself and would like a person to review it."
-UNKNOWN_ID = "00000000-0000-0000-0000-000000000000"
 DECISION_FIELDS = ("guess", "model_score", "style_score", "combined_score")
 
+def unknown_id_for(trial):
+    """Return a distinct unknown content ID for each trial."""
+    return f"00000000-0000-0000-0000-{trial:012d}"
 
 def safe_json(response):
     try:
@@ -100,27 +103,55 @@ def run_trial(requests, url, trial, timeout):
         check("original entry matches what /submit returned",
               all(before[0].get(k) == decision.get(k) for k in DECISION_FIELDS),
               {k: (before[0].get(k), decision.get(k)) for k in DECISION_FIELDS})
+    
+    unknown_id = unknown_id_for(trial)
 
     # 5. Invalid appeals: rejected, and no new review record.
     invalid = [
-        ("unknown content_id", {"content_id": UNKNOWN_ID, "reasoning": VALID_REASONING}),
+        ("unknown content_id", {"content_id": unknown_id, "reasoning": VALID_REASONING}),
         ("missing content_id", {"reasoning": VALID_REASONING}),
         ("missing reasoning", {"content_id": content_id}),
         ("empty reasoning", {"content_id": content_id, "reasoning": ""}),
         ("whitespace-only reasoning", {"content_id": content_id, "reasoning": "   "}),
         ("non-string reasoning", {"content_id": content_id, "reasoning": 12345}),
     ]
-    count_before = len(entries_for(requests, url, content_id, timeout))
+    # Snapshot the original submission's entries before invalid appeals.
+    before_invalid = entries_for(requests, url, content_id, timeout)
+
     for name, payload in invalid:
         r = requests.post(f"{url}/appeal", json=payload, timeout=timeout)
         check(f"invalid appeal rejected with 4xx: {name}",
               400 <= r.status_code < 500, f"status {r.status_code}")
-    count_after = len(entries_for(requests, url, content_id, timeout))
-    check("invalid appeals added no entries", count_after == count_before,
-          f"{count_before} -> {count_after}")
-    unknown_entries = entries_for(requests, url, UNKNOWN_ID, timeout)
-    check("no entry was created for the unknown content_id", not unknown_entries,
-          f"{len(unknown_entries)} entries")
+
+    # Invalid requests linked to the original submission should create
+    # rejection entries, not new decisions or appeals.
+    after_invalid = entries_for(requests, url, content_id, timeout)
+    new_entries = after_invalid[len(before_invalid):]
+
+    check(
+        "invalid appeals created only rejection entries",
+        len(new_entries) == 4
+        and all(
+            e.get("event") == "rejected"
+            and e.get("status") == "rejected"
+            for e in new_entries
+        ),
+        f"{len(new_entries)} new entries: "
+        f"{[e.get('event') for e in new_entries]}"
+    )
+
+    # The unknown ID should have one rejection record, not a decision
+    # or an appeal record.
+    unknown_entries = entries_for(requests, url, unknown_id, timeout)
+
+    check(
+        "unknown content_id created a rejection, not a decision",
+        len(unknown_entries) == 1
+        and unknown_entries[0].get("event") == "rejected"
+        and unknown_entries[0].get("status") == "rejected"
+        and unknown_entries[0].get("reason") == "appeal_submission_not_found",
+        str(unknown_entries)
+    )
     return checks
 
 
