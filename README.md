@@ -261,9 +261,6 @@ Command: python run_attacks.py --flood 15
 
 ## Attack Run — Before
 
-<!-- Every attack with its outcome and a held-or-broke mark.
-     `run_attacks.py --label before` produces the table. -->
-
 | ID | Family | Targeting | Status | Content ID | Guess | Score | Verdict |
 |---|---|---|---|---|---|---|---|
 | EV01 | evasion | signal two: typos raise word variety | 200 | `882c7d8b-c2b9-4522-b569-2e1fef1782a7` | human | 0.341 | BROKE |
@@ -348,8 +345,6 @@ FP05 was a false positive: human-written technical documentation was classified 
 
 ## Run Log and Verdicts
 
-<!-- Your five criteria across three trials. `run_eval.py --label before`. -->
-
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
 | 1. False positives on my own writing | No more than 1 of 10 human samples labeled `ai` | 0/10 `ai` | 0/10 `ai` | 0/10 `ai` | **MET** Nothing was ever labeled `ai`. See criterion 3. |
@@ -383,7 +378,7 @@ FP05 was a false positive: human-written technical documentation was classified 
 - The model signal separates only slightly (gap +0.0284).
 - The style signal points the wrong way (gap −0.0247), so AI samples read as slightly more human than my human samples.
 - Averaging at 0.5/0.5 cancels the small model-signal gap against the inverted style gap.
-- The style signal is the larger problem. [Check per-sample style scores in the log and state which sample property drives it. For example, if my AI samples vary their sentence length more than my human samples, that raises the sentence-length variation, which my style score treats as human.]
+- The style signal is the larger problem. 
 
 *Criterion 3 (label coverage).* All 20 texts landed in `unsure`. Combined scores ran from 0.4193 to 0.6763, and the `ai` threshold is 0.69 while `human` is ≤ 0.35. The observed range sits entirely between the two thresholds, so neither label was reachable.
 - This is a symptom of criterion 2, not a separate fault in the label mapping.
@@ -399,36 +394,121 @@ FP05 was a false positive: human-written technical documentation was classified 
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** I lowered the style signal's weight in `config.py` from 0.50 to 0.25, so the model signal now counts 0.75. I changed nothing else: no signal definitions, no thresholds (≤0.35 `human`, ≥0.69 `ai`), no samples.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:**  Criterion 2's diagnosis. The style signal is inverted on my samples (AI minus human = −0.0247) and barely varies (standard deviation 0.039 against 0.108 for the model signal), so at 0.5/0.5 it cancels the small separation the model signal provides. Lowering its weight is the smallest change that follows from that. I did not move a threshold: the gap was 0.002, and moving a cutoff cannot fix a gap that small.
 
 ### Attack Run — After
 
-<!-- Same format. `run_attacks.py --label after` -->
+`run_attacks.py --label after`: 56 attacks, 0 crashes or 5xx. Marked with the same rules as the before run.
+ 
+| ID | Family | Targeting | Status | Content ID | Guess | Score | Verdict |
+|---|---|---|---|---|---|---|---|
+| EV01 | evasion | signal two: typos raise word variety | 200 | `dfc91575-73b6-4155-93bd-a8f1d68de181` | human | 0.507 | BROKE |
+| EV02 | evasion | signal two: broken-up sentences raise length spread | 200 | `f48c8200-2b09-4b38-900f-6e9694ae8477` | unsure | 0.071 | HELD |
+| EV03 | evasion | signal two: a pasted quotation changes the shape | 200 | `9954a837-a61d-42d6-8a77-fde48b19bcdc` | unsure | 0.213 | HELD |
+| EV04 | evasion | signal one: unusual words raise perplexity | 200 | `a03a3eb2-8ef6-4b25-a16c-8088bebfbc1a` | unsure | 0.162 | HELD |
+| EV05 | evasion | both signals: heavy human editing pass | 200 | `282771e0-e314-4730-8e82-71001837b0fb` | human | 0.311 | BROKE |
+| EV06 | evasion | signal two: one very long sentence and one very short | 200 | `1c431684-f033-4052-ac3d-cbd35188b043` | unsure | 0.036 | HELD |
+| EV07 | evasion | signal two: padding with punctuation | 200 | `2900b126-460c-45be-ba79-c266b6cfadbe` | unsure | 0.061 | HELD |
+| EV08 | evasion | signal one: text below the token window | 200 | `b882926d-ce18-4379-ab72-a8945816601f` | human | 0.437 | BROKE |
+| EV09 | evasion | both: AI text with a human opening paragraph bolted on | 200 | `36c8ace9-2089-416e-ae23-99702f042687` | unsure | 0.265 | HELD |
+| EV10 | evasion | signal two: repeated stanza structure | 200 | `afd47d1a-4da9-4907-8c64-9808879ad04e` | ai | 0.818 | HELD |
+| FP01 | false_positive | plain, clear human writing with no flourishes | 200 | `683eb225-2107-4008-ba69-edcccfc0a432` | unsure | 0.171 | HELD |
+| FP02 | false_positive | human writing in a formal register | 200 | `74ae3bdf-3b70-4de5-b45d-6d3a7d3f978c` | ai | 0.382 | BROKE |
+| FP03 | false_positive | a non-native English speaker writing carefully | 200 | `4f2e2689-ace0-4250-8dec-8bdb733a476c` | ai | 0.465 | BROKE |
+| FP04 | false_positive | a student essay written to a rubric | 200 | `a54f0100-267e-4d0c-80d2-508f710e0c14` | ai | 0.480 | BROKE |
+| FP05 | false_positive | technical documentation written by a person | 200 | `58327eba-f146-4aaf-9862-c30dcc859f79` | ai | 0.500 | BROKE |
+| FP06 | false_positive | a person imitating a formal template | 200 | `157da1ff-6836-4a45-acb6-bcad6a39cabd` | ai | 0.553 | BROKE |
+| FP07 | false_positive | human writing that repeats a phrase deliberately | 200 | `681b125c-8ded-429c-9965-60be768a0a66` | ai | 0.603 | BROKE |
+| FP08 | false_positive | very short genuine human submission | 200 | `c31d0d97-917a-4a63-b0d2-982e3aa15006` | human | 0.342 | HELD |
+| PI01 | prompt_injection | instruction to ignore the check | 200 | `64edb068-7aa8-4ba1-9789-fe295561e073` | unsure | 0.139 | HELD |
+| PI02 | prompt_injection | instruction disguised as a system message | 200 | `54c6233a-d75c-4ebe-a4e9-fde6fb4c4eb1` | human | 0.531 | BROKE |
+| PI03 | prompt_injection | instruction wrapped in the writer's voice | 200 | `0440fa14-4e37-49d3-90af-22b04ab580b4` | unsure | 0.100 | HELD |
+| PI04 | prompt_injection | attempt to make the label text hostile | 200 | `77a8b13b-fb85-4131-ba11-1889616a2614` | unsure | 0.037 | HELD |
+| PI05 | prompt_injection | attempt to inject into the audit log | 200 | `a301814a-5108-478c-9e21-5200fdee5d4b` | unsure | 0.138 | HELD |
+| PI06 | prompt_injection | instruction plus real human text | 200 | `52b7d2d9-7bcb-4c6b-8a78-bc6e05798392` | unsure | 0.083 | HELD |
+| MF01 | malformed | text is only whitespace | 400 | `—` | — | — | HELD |
+| MF02 | malformed | text is a single character | 400 | `—` | — | — | HELD |
+| MF03 | malformed | text is control characters | 200 | `2bbdfbfa-7506-493e-856d-b1d4f234ef79` | human | 0.875 | BROKE |
+| MF04 | malformed | text is only punctuation | 200 | `1f878d87-9d74-47b3-903f-fdc8b4822e22` | human | 0.608 | BROKE |
+| MF05 | malformed | text is a very long single word | 200 | `fe15b091-56ea-4f2b-97bd-57f5836ea3c1` | ai | 0.621 | BROKE |
+| MF06 | malformed | text is emoji only | 200 | `ed7393fb-ef4b-406a-a028-f6160bf502ba` | ai | 0.745 | BROKE |
+| MF07 | malformed | text is right-to-left script | 200 | `6901239a-1573-497e-8ff9-5d7a733ee6da` | ai | 0.610 | HELD |
+| MF08 | malformed | text is 60,000 characters | 200 | `263ca708-f520-4af6-b279-b9a0e1dac908` | ai | 0.905 | HELD |
+| RQ01 | malformed | no text field at all | 400 | `—` | — | — | HELD |
+| RQ02 | malformed | no creator_id | 400 | `—` | — | — | HELD |
+| RQ03 | malformed | text is a number | 400 | `—` | — | — | HELD |
+| RQ04 | malformed | text is a list | 400 | `—` | — | — | HELD |
+| RQ05 | malformed | text is null | 400 | `—` | — | — | HELD |
+| RQ06 | malformed | creator_id is an object | 400 | `—` | — | — | HELD |
+| RQ07 | malformed | body is a JSON array, not an object | 400 | `—` | — | — | HELD |
+| RQ08 | malformed | body is unparseable JSON | 400 | `—` | — | — | HELD |
+| RQ09 | malformed | body is empty | 400 | `—` | — | — | HELD |
+| RQ10 | malformed | body is form-encoded, not JSON | 400 | `—` | — | — | HELD |
+| RQ11 | malformed | body is JSON claiming to be plain text | 400 | `—` | — | — | HELD |
+| RQ12 | malformed | deeply nested JSON | 400 | `—` | — | — | HELD |
+| FL01_01 | flood_same_creator | 20 rapid submissions from one creator | 200 | `42716a68-d132-41a5-afcf-0f63a33d8c22` | human | 0.832 | HELD |
+| FL01_02 | flood_same_creator | 20 rapid submissions from one creator | 200 | `364e34a1-e4b3-46b2-b4fa-54d5d2669fe8` | human | 0.832 | HELD |
+| FL01_03 | flood_same_creator | 20 rapid submissions from one creator | 200 | `86060ca2-b8b2-4d77-bae8-6ea10d27e818` | human | 0.832 | HELD |
+| FL01_04 | flood_same_creator | 20 rapid submissions from one creator | 200 | `4a02a0a9-a61f-4d06-8d8f-521b8bee6a05` | human | 0.832 | HELD |
+| FL01_05 | flood_same_creator | 20 rapid submissions from one creator | 200 | `f169c770-903e-4033-adab-a0e35a30cf2d` | human | 0.832 | HELD |
+| FL01_06 | flood_same_creator | 20 rapid submissions from one creator | 200 | `2c5bedd3-c8f4-4199-97c1-52b7e0bdd947` | human | 0.832 | HELD |
+| FL01_07 | flood_same_creator | 20 rapid submissions from one creator | 200 | `574f78ac-b75a-4a7d-8815-adbe3f5729f9` | human | 0.832 | HELD |
+| FL01_08 | flood_same_creator | 20 rapid submissions from one creator | 200 | `cab1c63a-efdb-4363-ba0e-56754fbbd156` | human | 0.832 | HELD |
+| FL01_09 | flood_same_creator | 20 rapid submissions from one creator | 200 | `6758ef32-954c-4804-9331-147fb1fe1014` | human | 0.832 | HELD |
+| FL01_10 | flood_same_creator | 20 rapid submissions from one creator | 200 | `10406810-bcca-431a-aeab-e7da65c87599` | human | 0.832 | HELD |
+| FL01_11 | flood_same_creator | 20 rapid submissions from one creator | 429 | `—` | — | — | HELD |
+| FL01_12 | flood_same_creator | 20 rapid submissions from one creator | 429 | `—` | — | — | HELD |
+
+**Before and after, by family** (BROKE count):
+ 
+| Family | Attacks | Before | After |
+|---|---|---|---|
+| evasion | 10 | 2 (EV01, EV08) | 3 (+EV05) |
+| false_positive | 8 | 2 (FP05, FP07) | **6** (+FP02, FP03, FP04, FP06) |
+| prompt_injection | 6 | 1 (PI02) | 1 (PI02) |
+| malformed | 20 | 2 (MF03, MF06) | 4 (+MF04, MF05) |
+| flood_same_creator | 12 | 0 | 0 |
+| **Total** | **56** | **7** | **14** |
+
+### Run Log — After
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. False positives on my own writing | No more than 1 of 10 human samples labeled `ai` | 1/10 `ai` | 1/10 `ai` | 1/10 `ai` | **MET** |
+| 2. Score separation | AI–human average combined-score gap ≥ 0.15; ≥ 7/10 AI scores above human mean | gap +0.0160*; 5/10 | same | same | **MISSED** |
+| 3. Label coverage | At least one each of `human`, `unsure`, and `ai` | 19/20 `unsure`; 1/20 `ai`, 0/20 `human` | same | same | **MISSED** |
+| 4. Appeal workflow | Valid appeal succeeds, logs `under_review`, and preserves original decision | 17/18 | 17/18 | 17/18 | **MET** (see note below) |
+| 5. Invalid input | Invalid requests return 4xx, create no decision, and log a rejection | all 400 | all 400 | all 400 | **MET** |
+
+Note on criterion 4: the one failing check is a test artifact, not a service fault. The "unknown content_id" check reuses the same fake ID every run, and the audit log is append-only, so the earlier run's rejection is still there and the check sees two entries instead of one. 
 
 
-
-**Did it help, and how do I know:**
-
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
-
-
+**Did it help, and how do I know:** Partly on the number I aimed at, and no on everything that matters.
+- The gap grew from +0.0019 to +0.0160, about eight times, and landed where I predicted (0.015). It is still a tenth of the 0.15 target, and AI-above-human-mean stayed at 5/10.
+- The `ai` label became reachable, and it fired once, on a human text. Criterion 1 went from met to missed. This is the trade I expected: before, nothing could be accused, so nothing was accused wrongly.
+- Criterion 3 is still missed. All 20 texts are `unsure` except that one wrongly accused human text. The change did not make `human` reachable, and no AI text reached 0.69.
+- Evasion note: 7 of 10 evasion attacks ended `unsure`, not `human`. That says less than it seems to, because my unmodified AI samples are not caught either (0 of 10 reach `ai`). An evasion cannot defeat a detector that wasn't catching the original.
+- The attack run shows the same limit from the other side. Six of eight genuine-human false-positive texts (formal register, non-native writer, rubric essay, technical documentation, template, deliberate repetition) are labeled `ai`.
 
 ---
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+**Criteria 2 and 3 (separation and coverage).** Both signals measure how polished a text is, not who wrote it. On my samples, human and AI perplexity overlap almost completely (median 38.2 against 36.5), and the style signal's word-variety half points the wrong way (AI minus human = −0.087). Reweighting cannot fix that. What I'd do: drop the type-token-ratio half of the style signal, re-center the `ai` threshold, and rebuild the sample set with informal human writing. I stopped because that is more than one change, and because 10 samples of one genre can't support a retuning.
+ 
+**Criterion 1 (new).** One of my own texts, formal academic prose, now crosses 0.69. This is the cost of the weight change, and the false-positive family says it is not an accident (6 of 8 accused).
 
+**Attacks still getting through (15).**
+- Degenerate input gets confident labels: control characters and bare punctuation get `human` at 0.875 and 0.608; a single long word, emoji and right-to-left script get `ai` at 0.62–0.75. What I'd do: reject text with too few real words, the way short text is already rejected (MF01 and MF02 return 400). I stopped because it is an input-validation change, not a signal change.
+- Repetition reads as machine-like (FP07, MF05, EV10). Unusual or very short text reads as human (EV01, EV05, EV08, PI02).
+- MF08: 60,000 characters returns 200 and labeled `ai` at 0.905. There is no length cap.
+- PI02: I marked it BROKE because the attacker's goal (`human`) was achieved. I don't believe the instruction was followed, since nothing in my pipeline reads instructions.
 
 
 **The trade I'd make if this ran for real:**
 
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
+I would raise the ai threshold and let more AI text through, because a wrong accusation is not recoverable the way a miss is. Six of eight genuine-human texts in the attack run were accused, so the people who pay for a lower threshold are the formal and non-native writers, who would have to prove they wrote their own work, while the cost of a miss falls on a grader or reader who can still read the text.
 
 
 
