@@ -499,7 +499,7 @@ Note on criterion 4: the one failing check is a test artifact, not a service fau
  
 **Criterion 1 (new).** One of my own texts, formal academic prose, now crosses 0.69. This is the cost of the weight change, and the false-positive family says it is not an accident (6 of 8 accused).
 
-**Attacks still getting through (15).**
+**Attacks still getting through (14).**
 - Degenerate input gets confident labels: control characters and bare punctuation get `human` at 0.875 and 0.608; a single long word, emoji and right-to-left script get `ai` at 0.62–0.75. What I'd do: reject text with too few real words, the way short text is already rejected (MF01 and MF02 return 400). I stopped because it is an input-validation change, not a signal change.
 - Repetition reads as machine-like (FP07, MF05, EV10). Unusual or very short text reads as human (EV01, EV05, EV08, PI02).
 - MF08: 60,000 characters returns 200 and labeled `ai` at 0.905. There is no length cap.
@@ -530,17 +530,17 @@ I would raise the ai threshold and let more AI text through, because a wrong acc
 
      SUBMISSION CHECKLIST — unit 8
 
-       [ ] Rate limiting on /submit, with your numbers justified
-       [ ] The pasted run of status codes showing 429
-       [ ] Audit log with all nine fields, recording rejections too
-       [ ] The attack set run IN FULL, every input with an outcome
-       [ ] Ten audit log entries pasted as text
-       [ ] Five criteria across three trials
-       [ ] A diagnosis for every miss and every broken attack — stage AND mechanism
-       [ ] One improvement, with Attack Run — After
-       [ ] What's Still Broken, including the production trade
-       [ ] At least four new commits
-       [ ] The SAME repository URL as last unit
+       [X] Rate limiting on /submit, with your numbers justified
+       [X] The pasted run of status codes showing 429
+       [X] Audit log with all nine fields, recording rejections too
+       [X] The attack set run IN FULL, every input with an outcome
+       [X] Ten audit log entries pasted as text
+       [X] Five criteria across three trials
+       [X] A diagnosis for every miss and every broken attack — stage AND mechanism
+       [X] One improvement, with Attack Run — After
+       [X] What's Still Broken, including the production trade
+       [X] At least four new commits
+       [X] The SAME repository URL as last unit
 
      Do not delete and recreate this repository.
      ═════════════════════════════════════════════════════════════════════ -->
