@@ -547,4 +547,23 @@ I would raise the ai threshold and let more AI text through, because a wrong acc
 
 ---
 
+## Capstone
+
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+## The Shape
+**Selected system:** Provenance Guard
+
+**Selected shape:** C — Extend one capability.
+
+I will extend the existing Provenance Guard detection service by introducing a third detection signal called the Burstiness Signal. The signal will calculate the variance of GPT-2's per-token prediction losses, providing a measurement of how much prediction difficulty varies throughout a submission. It will reuse the existing GPT-2 inference pass and be incorporated into the existing weighted scoring system alongside the Model and Style Signals. The initial weights will be fixed at 0.50 for the Model Signal, 0.25 for the Burstiness Signal, and 0.25 for the Style Signal. The extension will be evaluated to determine whether the additional signal provides useful information for distinguishing AI-generated and human-written text.
+
+Although Shape C is the selected extension, deployment and instrumentation are still required. The service will run locally using a documented command, with structured logging, latency measurement, and a measured cost per run.
+
+### What's Out of Scope
+
+- **Span-level scoring:** I considered evaluating individual paragraphs and identifying which spans contribute most to a submission's classification. However, this would require additional processing, score aggregation, and response changes, making it too large for this unit.
+- **Additional detection capabilities:** I will not introduce further signals, additional models, or a second GPT-2 inference pass. The Burstiness Signal will be the only new detection capability.
+- **Interface and architectural changes:** I will not add a user interface, rewrite the existing signals, or rebuild the service from scratch. I will preserve the existing architecture and response mechanism wherever possible.
+
+I will also keep the initial signal weights fixed during implementation and baseline evaluation. Any weight adjustment will be reserved for the single controlled improvement during the evaluation phase.
