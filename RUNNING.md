@@ -74,7 +74,12 @@ curl -X POST http://127.0.0.1:5000/submit \
 A successful submission returns the classification, confidence, individual signal scores, and combined score.
 
 ## Logs
-Decision and appeal records are written to the configured audit log as JSON Lines. The `/log` endpoint can be used to inspect recorded entries.
+
+Decision, appeal, and rejection records are written as JSON Lines to:
+
+`logs/audit.jsonl`
+
+The log directory is created automatically when an entry is written. Each line represents one JSON record. The `/log` endpoint can also be used to inspect recorded entries.
 
 ## Limitations
 
