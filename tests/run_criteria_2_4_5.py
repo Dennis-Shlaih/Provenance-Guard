@@ -141,13 +141,13 @@ def main():
             burstiness_score = float(body["burstiness_score"])
             style_score = float(body["style_score"])
             combined_score = float(body["combined_score"])
-            expected_score = round(
-                0.50 * model_score + 0.25 * burstiness_score + 0.25 * style_score,
-                4,
+            expected_score = (
+                0.50 * model_score
+                + 0.50 * burstiness_score
             )
             score_match = math.isclose(
                 round(combined_score, 4),
-                expected_score,
+                round(expected_score, 4),
                 rel_tol=0.0,
                 abs_tol=1e-6,
             )

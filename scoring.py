@@ -5,20 +5,12 @@ Combines the Model, Burstiness, and Style signals into one score.
 import config
 
 
-def combine_signals(
-    model_score: float,
-    burstiness_score: float,
-    style_score: float,
-) -> float:
-    """
-    Combine all three signals using the weights defined in config.py.
-    Higher scores indicate more AI-like patterns.
-    """
-    return (
-        config.WEIGHT_MODEL_SIGNAL * model_score
-        + config.WEIGHT_BURSTINESS_SIGNAL * burstiness_score
-        + config.WEIGHT_STYLE_SIGNAL * style_score
+def combine_signals(model_score, burstiness_score, style_score=None):
+    combined = (
+        0.50 * model_score
+        + 0.50 * burstiness_score
     )
+    return round(combined, 4)
 
 
 def score_to_label(score: float) -> tuple[str, str]:

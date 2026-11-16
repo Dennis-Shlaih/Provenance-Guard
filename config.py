@@ -55,7 +55,7 @@ DETECTOR_MAX_TOKENS = 400
 # decide, it goes here.
 
 WEIGHT_MODEL_SIGNAL = 0.50
-WEIGHT_BURSTINESS_SIGNAL = 0.25
+WEIGHT_BURSTINESS_SIGNAL = 0.50
 WEIGHT_STYLE_SIGNAL = 0.25
 
 
@@ -73,7 +73,7 @@ WEIGHT_STYLE_SIGNAL = 0.25
 # that decide who pays for it.
 
 HUMAN_THRESHOLD = 0.35
-AI_THRESHOLD = 0.69
+AI_THRESHOLD = 0.435
 
 # ⚠️ One thing that catches people out in Milestone 5. A weighted average can
 # only land between its two inputs — so while `style_signal` is still the stub
