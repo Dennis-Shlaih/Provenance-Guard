@@ -23,7 +23,7 @@ import detector  # noqa: E402
 
 BASE_URL = "http://127.0.0.1:5000"
 TRIALS = 3
-TIMEOUT_SECONDS = 30
+TIMEOUT_SECONDS = 180
 
 
 def request_json(path: str, payload: dict | None = None):

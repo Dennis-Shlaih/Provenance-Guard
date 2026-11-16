@@ -547,7 +547,7 @@ I would raise the ai threshold and let more AI text through, because a wrong acc
 
 ---
 
-## Capstone
+# Capstone
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
 
@@ -636,3 +636,225 @@ The 10 runs had an average processing time of **452.81 ms (approximately 0.453 s
 This measurement represents normal processing after GPT-2 had already loaded. It excludes the initial model download and loading time, audit-file writing, and HTTP response transmission. The first model download requires approximately 526 MB of files, and model loading can make the first scoring request significantly slower.
 
 Because inference runs locally, there is no per-request API fee. Actual resource costs depend on the machine running the application, including its CPU, memory, and electricity usage.
+
+## Run Log and Verdicts
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Burstiness calculation and invalid inputs | Correct population variance and burstiness calculation; invalid requests return 4xx and are logged | All tests passed | All tests passed | All tests passed | **MET** |
+| 2. Weighted scoring integration | Combined score matches the weighted formula within tolerance | All 20 matched | All 20 matched | All 20 matched | **MET** |
+| 3. Computational overhead | One GPT-2 forward pass; average processing time ≤600 ms | 1 pass; 1,041.45 ms | 1 pass; 215.16 ms | 1 pass; 217.82 ms | **PARTIAL** |
+| 4. Burstiness score separation | AI mean burstiness score ≥ human mean + 0.01 | Gap +0.02224 | Same | Same | **MET** |
+| 5. Classification outcomes | 0/10 human samples labeled `ai`; at least 1/10 AI samples labeled `ai` | 0 human; 0 AI | Same | Same | **MISSED** |
+
+### Criterion 1 — Burstiness Calculation and Invalid Inputs
+
+```
+Criterion 1 — burstiness calculation and invalid inputs
+PASS controlled token-loss calculation: variance=1.000000, burstiness_score=0.5000
+PASS mapping boundary: variance=0 -> burstiness_score=1.0000
+Rate limiting enabled: True
+PASS trial 1 — empty text: HTTP 400
+PASS trial 1 — missing text: HTTP 400
+PASS trial 1 — too-short text: HTTP 400
+PASS trial 1 — empty text recorded in audit log
+PASS trial 1 — missing text recorded in audit log
+PASS trial 1 — too-short text recorded in audit log
+PASS trial 2 — empty text: HTTP 400
+PASS trial 2 — missing text: HTTP 400
+PASS trial 2 — too-short text: HTTP 400
+PASS trial 2 — empty text recorded in audit log
+PASS trial 2 — missing text recorded in audit log
+PASS trial 2 — too-short text recorded in audit log
+PASS trial 3 — empty text: HTTP 400
+PASS trial 3 — missing text: HTTP 400
+PASS trial 3 — too-short text: HTTP 400
+PASS trial 3 — empty text recorded in audit log
+PASS trial 3 — missing text recorded in audit log
+PASS trial 3 — too-short text recorded in audit log
+```
+
+**Verdict: MET.** The controlled calculations matched the expected population variance and burstiness scores. All nine invalid submissions returned HTTP 400 and were recorded in the audit log.
+
+---
+
+### Criterion 2 — Weighted Scoring Integration
+
+**Recorded results from `criteria_2_4_5_results.json`:**
+
+**Run 1**
+
+```
+{
+  "trial": 1,
+  "sample_count": 20,
+  "criterion_2_all_scores_match": true
+}
+```
+
+**Run 2**
+
+```
+{
+  "trial": 2,
+  "sample_count": 20,
+  "criterion_2_all_scores_match": true
+}
+```
+
+**Run 3**
+
+```
+{
+  "trial": 3,
+  "sample_count": 20,
+  "criterion_2_all_scores_match": true
+}
+```
+
+**Verdict: MET.** All 60 submissions matched the weighted scoring formula at the tested four-decimal precision.
+
+---
+
+### Criterion 3 — Computational Overhead
+
+**One-forward-pass test output:**
+
+```
+Criterion 3 — one GPT-2 forward pass for both model signals
+Detector device: cpu
+Detector dtype: torch.float32
+PASS trial 1: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+PASS trial 2: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+PASS trial 3: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+
+Criterion 3 one-pass check: PASS
+Note: API processing latency is measured by run_criteria_2_4_5.py.
+```
+
+**Recorded API latency results from `criteria_2_4_5_results.json`:**
+
+**Run 1**
+
+```
+{
+  "trial": 1,
+  "criterion_3_average_duration_ms": 1041.45,
+  "criterion_3_pass": false
+}
+```
+
+**Run 2**
+
+```
+{
+  "trial": 2,
+  "criterion_3_average_duration_ms": 215.16,
+  "criterion_3_pass": true
+}
+```
+
+**Run 3**
+
+```
+{
+  "trial": 3,
+  "criterion_3_average_duration_ms": 217.82,
+  "criterion_3_pass": true
+}
+```
+
+**Verdict: PARTIAL.** The one-forward-pass requirement passed all three trials. The latency target passed in Runs 2 and 3 but failed in Run 1. The first request in Run 1 took 16,109.96 ms, which substantially increased that trial's average.
+
+---
+
+### Criterion 4 — Burstiness Score Separation
+
+**Recorded results from `criteria_2_4_5_results.json`:**
+
+**Run 1**
+
+```
+{
+  "trial": 1,
+  "criterion_4_human_mean_burstiness": 0.09874,
+  "criterion_4_ai_mean_burstiness": 0.12098,
+  "criterion_4_gap": 0.02224,
+  "criterion_4_pass": true
+}
+```
+
+**Run 2**
+
+```
+{
+  "trial": 2,
+  "criterion_4_human_mean_burstiness": 0.09874,
+  "criterion_4_ai_mean_burstiness": 0.12098,
+  "criterion_4_gap": 0.02224,
+  "criterion_4_pass": true
+}
+```
+
+**Run 3**
+
+```
+{
+  "trial": 3,
+  "criterion_4_human_mean_burstiness": 0.09874,
+  "criterion_4_ai_mean_burstiness": 0.12098,
+  "criterion_4_gap": 0.02224,
+  "criterion_4_pass": true
+}
+```
+
+**Verdict: MET.** The AI samples had an average burstiness score 0.02224 higher than the human samples in all three trials, exceeding the 0.01 target.
+
+---
+
+### Criterion 5 — Classification Outcomes
+
+**Recorded results from `criteria_2_4_5_results.json`:**
+
+**Run 1**
+
+```
+{
+  "trial": 1,
+  "criterion_5_human_ai_labels": 0,
+  "criterion_5_ai_samples_labelled_ai": 0,
+  "criterion_5_pass": false
+}
+```
+
+**Run 2**
+
+```
+{
+  "trial": 2,
+  "criterion_5_human_ai_labels": 0,
+  "criterion_5_ai_samples_labelled_ai": 0,
+  "criterion_5_pass": false
+}
+```
+
+**Run 3**
+
+```
+{
+  "trial": 3,
+  "criterion_5_human_ai_labels": 0,
+  "criterion_5_ai_samples_labelled_ai": 0,
+  "criterion_5_pass": false
+}
+```
+
+**Verdict: MISSED.** No human samples were incorrectly labeled as AI, but none of the 10 AI samples received the AI label in any trial. All AI samples were classified as `unsure`.
+
+---
+
+### Overall Verdict
+
+The extension passed Criteria 1, 2, and 4. Criterion 3 was partially met: the one-pass requirement passed all three trials, while the latency target passed twice. Criterion 5 was missed because the classifier did not label any of the AI samples as AI.
+
+These results are the **before-change baseline**. The thresholds and scoring weights were not adjusted during these tests. They should remain unchanged in this record so that any later changes can be evaluated against the same samples and criteria.

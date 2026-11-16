@@ -146,7 +146,10 @@ def main():
                 4,
             )
             score_match = math.isclose(
-                combined_score, expected_score, rel_tol=0.0, abs_tol=1e-6
+                round(combined_score, 4),
+                expected_score,
+                rel_tol=0.0,
+                abs_tol=1e-6,
             )
             if not score_match:
                 raise AssertionError(
