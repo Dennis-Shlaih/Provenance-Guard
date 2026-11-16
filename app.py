@@ -200,9 +200,9 @@ def submit():
     # 3. Generate a unique ID for this submission
     content_id = str(uuid.uuid4())
 
-    # 4. Run both signals independently
+        # 4. Run both GPT-2-based signals in one inference pass
     try:
-        model_score = detector.model_signal(text)
+        model_score, burstiness_score = detector.model_signals(text)
     except detector.TextTooShortError as exc:
         audit.log_rejection(
             creator_id=creator_id,
@@ -211,39 +211,43 @@ def submit():
         )
         return jsonify({"error": str(exc)}), 400
 
+    # 5. Run the existing Style Signal
     style_score = stylometry.style_signal(text)
 
-    # 5. Combine the two signals
+    # 6. Combine all three signals
     combined_score = scoring.combine_signals(
-        model_score,
-        style_score
+        model_score=model_score,
+        burstiness_score=burstiness_score,
+        style_score=style_score,
     )
 
-    # 6. Determine the classification
+    # 7. Determine the classification
     guess, label = scoring.score_to_label(combined_score)
 
-    # 7. Calculate heuristic confidence strength
+    # 8. Calculate heuristic confidence strength
     confidence = round(abs(combined_score - 0.5) * 2, 4)
 
-    # 8. Write all three scores to the audit log
+    # 9. Write all three signal scores to the audit log
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
         guess=guess,
         model_score=model_score,
+        burstiness_score=burstiness_score,
         style_score=style_score,
         combined_score=combined_score,
         label=label,
         status="decided",
     )
 
-    # 9. Return the result
+    # 10. Return the result
     return jsonify({
         "content_id": content_id,
         "guess": guess,
         "confidence": confidence,
         "label": label,
         "model_score": model_score,
+        "burstiness_score": burstiness_score,
         "style_score": style_score,
         "combined_score": combined_score,
     })

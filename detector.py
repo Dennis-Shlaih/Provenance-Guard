@@ -140,6 +140,35 @@ def model_metrics(text: str) -> tuple[float, float]:
 
     return float(perplexity_value), float(variance_value)
 
+def model_score_from_perplexity(ppl: float) -> float:
+    """Convert perplexity into the existing 0–1 Model Signal."""
+    midpoint = 45.0
+    steepness = 1.6
+
+    score = 1.0 / (1.0 + (ppl / midpoint) ** steepness)
+    return round(min(max(score, 0.0), 1.0), 4)
+
+
+def burstiness_score_from_variance(variance: float) -> float:
+    """Convert token-loss variance into the heuristic Burstiness Signal."""
+    score = 1.0 / (1.0 + variance)
+    return round(min(max(score, 0.0), 1.0), 4)
+
+
+def model_signals(text: str) -> tuple[float, float]:
+    """
+    Calculate Model Signal and Burstiness Signal with one GPT-2 inference.
+
+    Returns:
+        (model_score, burstiness_score)
+    """
+    ppl, variance = model_metrics(text)
+
+    model_score = model_score_from_perplexity(ppl)
+    burstiness_score = burstiness_score_from_variance(variance)
+
+    return model_score, burstiness_score
+
 
 def perplexity(text: str) -> float:
     """Return the existing perplexity measurement."""
@@ -148,42 +177,15 @@ def perplexity(text: str) -> float:
 
 
 def burstiness_signal(text: str) -> float:
-    """
-    Convert per-token loss variance into a 0–1 AI-likelihood score.
-
-    Lower variance produces a higher AI-like score.
-    Higher variance produces a lower AI-like score.
-
-    This is a hypothesis to evaluate, not a reliable authorship test.
-    """
+    """Return the Burstiness Signal for a text."""
     _, variance = model_metrics(text)
-
-    score = 1.0 / (1.0 + variance)
-
-    return round(min(max(score, 0.0), 1.0), 4)
-
+    return burstiness_score_from_variance(variance)
 
 
 def model_signal(text: str) -> float:
-    """
-    The signal, as a 0–1 score. **Higher means more likely AI.**
-
-    Perplexity is unbounded and roughly log-distributed, so it gets squashed
-    onto 0–1 rather than clipped. The midpoint below is the perplexity that
-    maps to 0.5 — text this surprising is a coin flip.
-
-    You may want to move that midpoint once you've run the four calibration
-    inputs in Milestone 4 and seen what your own text actually scores. If you
-    do, say so in your README: it's a scoring decision, not a detail.
-    """
+    """Return the existing Model Signal for a text."""
     ppl, _ = model_metrics(text)
-
-    midpoint = 45.0    # perplexity that scores 0.5
-    steepness = 1.6    # how sharply the score moves either side of it
-
-    # Logistic on log-perplexity. Low perplexity -> high AI score.
-    score = 1.0 / (1.0 + (ppl / midpoint) ** steepness)
-    return round(min(max(score, 0.0), 1.0), 4)
+    return model_score_from_perplexity(ppl)
 
 
 def warm_up() -> str:

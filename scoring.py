@@ -1,38 +1,22 @@
 """
-Turning two numbers into one, and one number into something a person can read.
-← YOU BUILD THIS IN MILESTONES 4 AND 5
-
-Two functions live here, and both are stubs.
-
-`combine_signals` is where your false-positive decision from Milestone 1
-actually gets made. Everything above it — the labels, the appeal path — is
-downstream of a number this function produced.
-
-`score_to_label` is where you stop writing for a machine and start writing for
-a person. A score of 0.62 means nothing to a writer.
-
-⚠️ Your README's **Signals and Scoring** section has to name the file and
-function holding your combining rule. The grader checks your code against what
-you claim, so that line should read `scoring.py::combine_signals`.
+Combines the Model, Burstiness, and Style signals into one score.
 """
 
 import config
 
 
-import config
-
-
-def combine_signals(model_score: float, style_score: float) -> float:
+def combine_signals(
+    model_score: float,
+    burstiness_score: float,
+    style_score: float,
+) -> float:
     """
-    Combine the model and style signals using equal weighting.
-
-    Each signal contributes 50% to the combined score.
-
-    When the signals disagree, the average moves toward the middle,
-    reflecting uncertainty rather than relying entirely on one signal.
+    Combine all three signals using the weights defined in config.py.
+    Higher scores indicate more AI-like patterns.
     """
     return (
         config.WEIGHT_MODEL_SIGNAL * model_score
+        + config.WEIGHT_BURSTINESS_SIGNAL * burstiness_score
         + config.WEIGHT_STYLE_SIGNAL * style_score
     )
 
@@ -66,9 +50,7 @@ def score_to_label(score: float) -> tuple[str, str]:
 
 
 def label_ranges() -> list[tuple[str, str]]:
-    """
-    Return the score range associated with each label.
-    """
+    """Return the score range associated with each label."""
     return [
         ("high-confidence human", f"0.00 – {config.HUMAN_THRESHOLD:.2f}"),
         ("unsure", f"{config.HUMAN_THRESHOLD:.2f} – {config.AI_THRESHOLD:.2f}"),
