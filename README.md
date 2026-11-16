@@ -551,8 +551,19 @@ I would raise the ai threshold and let more AI text through, because a wrong acc
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
 
+## What This Extends
+
+**Existing system: Provenance Guard**
+
+Provenance Guard is an existing text-authorship detection service that evaluates submissions using two signals: a Model Signal based on GPT-2 perplexity and a Style Signal based on writing characteristics such as sentence variation and vocabulary diversity. These signals are combined using a weighted scoring system to produce an authorship classification.
+
+**What's new: Burstiness Signal**
+
+This extension introduces a third detection signal called the Burstiness Signal. It measures the variance of GPT-2's per-token prediction losses to capture how much prediction difficulty changes throughout a submission. The signal reuses the existing GPT-2 inference pass rather than introducing another model or inference request. It is incorporated into the existing weighted scoring system alongside the Model and Style Signals.
+
+The goal is to evaluate whether this additional signal provides useful information for distinguishing AI-generated and human-written text.
+
 ## The Shape
-**Selected system:** Provenance Guard
 
 **Selected shape:** C — Extend one capability.
 
@@ -567,3 +578,61 @@ Although Shape C is the selected extension, deployment and instrumentation are s
 - **Interface and architectural changes:** I will not add a user interface, rewrite the existing signals, or rebuild the service from scratch. I will preserve the existing architecture and response mechanism wherever possible.
 
 I will also keep the initial signal weights fixed during implementation and baseline evaluation. Any weight adjustment will be reserved for the single controlled improvement during the evaluation phase.
+
+---
+
+## Instrumentation
+
+Provenance Guard records structured JSON Lines audit entries in `logs/audit.jsonl`. Each successful submission records the timestamp, content ID, creator ID, input, output, individual signal scores, combined score, classification, and processing duration (`duration_ms`).
+
+Rejected submissions are also recorded with their input, error response, rejection reason, and processing duration. This allows both successful and failed requests to be inspected.
+
+### Successful Runs
+
+I tested the system using 10 samples from `scenarios.py`: five human-written samples and five AI-generated samples, alternating between the two categories.
+
+All 10 submissions returned HTTP 200.
+
+| Run | Sample Type | Content ID | Model Score | Burstiness Score | Style Score | Combined Score | Prediction | HTTP Status | Duration (ms) |
+|---:|---|---|---:|---:|---:|---:|---|---:|---:|
+| 1 | Human | `947b65db-7282-4c1a-a002-41741557b53c` | 0.7265 | 0.1309 | 0.4893 | 0.5183 | unsure | 200 | 627.93 |
+| 2 | AI | `822b3272-9671-4add-b640-f4810af57a04` | 0.7056 | 0.1339 | 0.4796 | 0.506175 | unsure | 200 | 473.45 |
+| 3 | Human | `81ec2e23-6e14-40eb-8554-1cacbbe2facb` | 0.5643 | 0.0891 | 0.5155 | 0.4333 | unsure | 200 | 372.72 |
+| 4 | AI | `8511a47f-2fa3-4991-90d6-0285100f0249` | 0.7455 | 0.1390 | 0.4565 | 0.521625 | unsure | 200 | 434.79 |
+| 5 | Human | `e4a4f2ee-a3a7-4ea6-8989-6e2d07662225` | 0.5228 | 0.0854 | 0.5877 | 0.429675 | unsure | 200 | 398.13 |
+| 6 | AI | `07089a21-2013-4a53-bc63-97ef3fcd08c3` | 0.5540 | 0.1103 | 0.4990 | 0.429325 | unsure | 200 | 410.97 |
+| 7 | Human | `c6645011-c06a-4590-b1ad-513ea68ad945` | 0.6852 | 0.1002 | 0.5950 | 0.5164 | unsure | 200 | 454.09 |
+| 8 | AI | `1102a8aa-d4df-4667-b49c-494d236c4ea0` | 0.5608 | 0.1224 | 0.5327 | 0.444175 | unsure | 200 | 466.68 |
+| 9 | Human | `dceb9acd-62f2-4fc7-b7e4-271cfe62789d` | 0.6837 | 0.1072 | 0.5233 | 0.499475 | unsure | 200 | 473.87 |
+| 10 | AI | `96418209-eaa0-4355-8c24-465e05525a1b` | 0.5299 | 0.1061 | 0.5503 | 0.429050 | unsure | 200 | 415.49 |
+
+### Failed Run
+
+A separate request with an empty text field was submitted to test input validation.
+
+- Creator ID: `instrumentation-test`
+- HTTP status: `400`
+- Rejection reason: `missing_or_invalid_text`
+- Input: `{"creator_id": "instrumentation-test", "text": ""}`
+- Output: `{"error": "A non-empty text field is required."}`
+- Processing duration: `0.01 ms`
+
+The failed request was recorded in the audit log rather than silently discarded.
+
+### Observations
+
+All 10 successful submissions received an `unsure` classification. Although the system successfully processed both human-written and AI-generated samples, this evaluation did not demonstrate reliable separation between the two categories. The results reinforce that the detector's scores are heuristic signals rather than definitive proof of authorship.
+
+---
+
+## What It Costs
+
+Provenance Guard runs GPT-2 locally on the CPU, so each submission does not incur an external LLM API charge. The primary per-submission cost is local computation.
+
+To estimate processing cost, I measured the duration of 10 successful submissions: five human-written samples and five AI-written samples, submitted in alternating order. The `/submit` route uses Python's `time.perf_counter()` to measure elapsed time from the beginning of request processing through scoring and response construction.
+
+The 10 runs had an average processing time of **452.81 ms (approximately 0.453 seconds) per submission**.
+
+This measurement represents normal processing after GPT-2 had already loaded. It excludes the initial model download and loading time, audit-file writing, and HTTP response transmission. The first model download requires approximately 526 MB of files, and model loading can make the first scoring request significantly slower.
+
+Because inference runs locally, there is no per-request API fee. Actual resource costs depend on the machine running the application, including its CPU, memory, and electricity usage.

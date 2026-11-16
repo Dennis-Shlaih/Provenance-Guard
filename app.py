@@ -23,6 +23,7 @@ Routes:
     GET  /log         the audit log. Already works
     GET  /health      is the service up, and is the model loaded
 """
+import time
 
 import uuid
 
@@ -153,28 +154,56 @@ def health():
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
+
 @app.post("/submit")
 @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
-    Process a submission using both signals and the combined score.
+    Process a submission using all three signals.
+    Record the input, output, and processing duration.
     """
 
-    # 1. Read the incoming JSON
+    # Start measuring this request.
+    start_time = time.perf_counter()
+
+    # 1. Read the incoming JSON.
     payload = request.get_json(silent=True)
 
-    # 2. Validate the request body
-    if not isinstance(payload, dict):
+    # Preserve the incoming request for the audit record.
+    input_record = (
+        payload if payload is not None
+        else request.get_data(as_text=True)
+    )
+
+    # Helper for recording failed submissions consistently.
+    def reject(creator_id, reason, message, status_code, **extra):
+        output_record = {"error": message}
+
         audit.log_rejection(
+            creator_id=creator_id,
+            reason=reason,
+            input=input_record,
+            output=output_record,
+            duration_ms=round(
+                (time.perf_counter() - start_time) * 1000, 2
+            ),
+            **extra,
+        )
+
+        return jsonify(output_record), status_code
+
+    # 2. Validate the request body.
+    if not isinstance(payload, dict):
+        return reject(
             creator_id="unknown",
             reason="invalid_request_body",
+            message="Request body must be a JSON object.",
+            status_code=400,
         )
-        return jsonify({"error": "Request body must be a JSON object."}), 400
 
     text = payload.get("text")
     creator_id = payload.get("creator_id")
 
-    # Use a safe creator ID for rejection logging.
     log_creator_id = (
         creator_id.strip()
         if isinstance(creator_id, str) and creator_id.strip()
@@ -182,52 +211,74 @@ def submit():
     )
 
     if not isinstance(text, str) or not text.strip():
-        audit.log_rejection(
+        return reject(
             creator_id=log_creator_id,
             reason="missing_or_invalid_text",
+            message="A non-empty text field is required.",
+            status_code=400,
         )
-        return jsonify({"error": "A non-empty text field is required."}), 400
 
     if not isinstance(creator_id, str) or not creator_id.strip():
-        audit.log_rejection(
+        return reject(
             creator_id="unknown",
             reason="missing_or_invalid_creator_id",
+            message="A valid creator_id is required.",
+            status_code=400,
         )
-        return jsonify({"error": "A valid creator_id is required."}), 400
 
     creator_id = creator_id.strip()
 
-    # 3. Generate a unique ID for this submission
+    # 3. Generate a unique ID for this submission.
     content_id = str(uuid.uuid4())
 
-        # 4. Run both GPT-2-based signals in one inference pass
+    # 4–8. Run the signals and calculate the final decision.
     try:
         model_score, burstiness_score = detector.model_signals(text)
+
+        style_score = stylometry.style_signal(text)
+
+        combined_score = scoring.combine_signals(
+            model_score=model_score,
+            burstiness_score=burstiness_score,
+            style_score=style_score,
+        )
+
+        guess, label = scoring.score_to_label(combined_score)
+
+        confidence = round(abs(combined_score - 0.5) * 2, 4)
+
     except detector.TextTooShortError as exc:
-        audit.log_rejection(
+        return reject(
             creator_id=creator_id,
             reason="text_too_short",
-            detail=str(exc),
+            message=str(exc),
+            status_code=400,
+            content_id=content_id,
         )
-        return jsonify({"error": str(exc)}), 400
 
-    # 5. Run the existing Style Signal
-    style_score = stylometry.style_signal(text)
+    except Exception as exc:
+        return reject(
+            creator_id=creator_id,
+            reason="processing_error",
+            message="An internal error occurred while processing the submission.",
+            status_code=500,
+            content_id=content_id,
+            error_type=type(exc).__name__,
+        )
 
-    # 6. Combine all three signals
-    combined_score = scoring.combine_signals(
-        model_score=model_score,
-        burstiness_score=burstiness_score,
-        style_score=style_score,
-    )
+    # 9. Build the response.
+    output_record = {
+        "content_id": content_id,
+        "guess": guess,
+        "confidence": confidence,
+        "label": label,
+        "model_score": model_score,
+        "burstiness_score": burstiness_score,
+        "style_score": style_score,
+        "combined_score": combined_score,
+    }
 
-    # 7. Determine the classification
-    guess, label = scoring.score_to_label(combined_score)
-
-    # 8. Calculate heuristic confidence strength
-    confidence = round(abs(combined_score - 0.5) * 2, 4)
-
-    # 9. Write all three signal scores to the audit log
+    # 10. Record the decision and instrumentation.
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
@@ -238,20 +289,13 @@ def submit():
         combined_score=combined_score,
         label=label,
         status="decided",
+        input=input_record,
+        output=output_record,
+        duration_ms=round(
+            (time.perf_counter() - start_time) * 1000, 2
+        ),
     )
-
-    # 10. Return the result
-    return jsonify({
-        "content_id": content_id,
-        "guess": guess,
-        "confidence": confidence,
-        "label": label,
-        "model_score": model_score,
-        "burstiness_score": burstiness_score,
-        "style_score": style_score,
-        "combined_score": combined_score,
-    })
-
+    return jsonify(output_record)
 
 
 @app.post("/appeal")
