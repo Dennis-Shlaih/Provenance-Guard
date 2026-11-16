@@ -88,15 +88,17 @@ def _load():
     return _model, _tokenizer
 
 
-def perplexity(text: str) -> float:
+def model_metrics(text: str) -> tuple[float, float]:
     """
-    How surprised the model is by this text. Lower means more predictable.
+    Run GPT-2 once and calculate:
+      1. Perplexity from mean token prediction loss.
+      2. Burstiness from variance in token prediction loss.
 
-    Returns a positive number. Typical values land roughly between 10 and 200,
-    but that range shifts with topic and length, which is one reason the raw
-    number isn't what you score on.
+    Returns:
+        (perplexity, loss_variance)
     """
     import torch
+    import torch.nn.functional as F
 
     model, tokenizer = _load()
 
@@ -106,19 +108,60 @@ def perplexity(text: str) -> float:
         truncation=True,
         max_length=config.DETECTOR_MAX_TOKENS,
     )
+
     input_ids = encoded["input_ids"]
 
-    # Two tokens is not enough to be surprised by anything.
     if input_ids.shape[1] < 3:
         raise TextTooShortError(
             "Text is too short to score — provide at least three tokens."
         )
 
     with torch.no_grad():
-        output = model(input_ids, labels=input_ids)
+        output = model(input_ids)
 
-    # The model's loss here IS mean negative log-likelihood per token.
-    return float(math.exp(output.loss.item()))
+    # GPT-2 predicts the next token.
+    # The first token has no preceding context, so exclude it.
+    logits = output.logits[:, :-1, :]
+    targets = input_ids[:, 1:]
+
+    # Calculate the individual negative log-likelihood
+    # for every predicted token.
+    token_losses = F.cross_entropy(
+        logits.reshape(-1, logits.shape[-1]),
+        targets.reshape(-1),
+        reduction="none",
+    )
+
+    mean_loss = token_losses.mean()
+    loss_variance = token_losses.var(unbiased=False)
+
+    perplexity_value = torch.exp(mean_loss).item()
+    variance_value = loss_variance.item()
+
+    return float(perplexity_value), float(variance_value)
+
+
+def perplexity(text: str) -> float:
+    """Return the existing perplexity measurement."""
+    ppl, _ = model_metrics(text)
+    return ppl
+
+
+def burstiness_signal(text: str) -> float:
+    """
+    Convert per-token loss variance into a 0–1 AI-likelihood score.
+
+    Lower variance produces a higher AI-like score.
+    Higher variance produces a lower AI-like score.
+
+    This is a hypothesis to evaluate, not a reliable authorship test.
+    """
+    _, variance = model_metrics(text)
+
+    score = 1.0 / (1.0 + variance)
+
+    return round(min(max(score, 0.0), 1.0), 4)
+
 
 
 def model_signal(text: str) -> float:
@@ -133,7 +176,7 @@ def model_signal(text: str) -> float:
     inputs in Milestone 4 and seen what your own text actually scores. If you
     do, say so in your README: it's a scoring decision, not a detail.
     """
-    ppl = perplexity(text)
+    ppl, _ = model_metrics(text)
 
     midpoint = 45.0    # perplexity that scores 0.5
     steepness = 1.6    # how sharply the score moves either side of it
