@@ -549,8 +549,6 @@ I would raise the ai threshold and let more AI text through, because a wrong acc
 
 # Capstone
 
-📖 **How to run this project: [RUNNING.md](RUNNING.md)**
-
 ## What This Extends
 
 **Existing system: Provenance Guard**
@@ -563,6 +561,8 @@ This extension introduces a third detection signal called the Burstiness Signal.
 
 The goal is to evaluate whether this additional signal provides useful information for distinguishing AI-generated and human-written text.
 
+---
+
 ## The Shape
 
 **Selected shape:** C — Extend one capability.
@@ -570,6 +570,19 @@ The goal is to evaluate whether this additional signal provides useful informati
 I will extend the existing Provenance Guard detection service by introducing a third detection signal called the Burstiness Signal. The signal will calculate the variance of GPT-2's per-token prediction losses, providing a measurement of how much prediction difficulty varies throughout a submission. It will reuse the existing GPT-2 inference pass and be incorporated into the existing weighted scoring system alongside the Model and Style Signals. The initial weights will be fixed at 0.50 for the Model Signal, 0.25 for the Burstiness Signal, and 0.25 for the Style Signal. The extension will be evaluated to determine whether the additional signal provides useful information for distinguishing AI-generated and human-written text.
 
 Although Shape C is the selected extension, deployment and instrumentation are still required. The service will run locally using a documented command, with structured logging, latency measurement, and a measured cost per run.
+
+---
+
+## Running It
+
+Provenance Guard runs locally using Python 3.11.18, Flask, and GPT-2 on CPU. To start the service, activate the project's virtual environment, install the pinned dependencies from `requirements-lock.txt`, and run:
+
+```
+python app.py
+```
+Once started, the service is available at `http://127.0.0.1:5000`. The first run downloads approximately 526 MB of GPT-2 model files from Hugging Face, so an internet connection is required.
+
+For complete setup instructions, dependency details, verification commands, logging information, and troubleshooting, see [**RUNNING.md**](RUNNING.md).
 
 ### What's Out of Scope
 
@@ -643,6 +656,8 @@ Estimated usage for 100 people per day: Assuming each person submits once daily,
 
 That is approximately 45.3 seconds of processing time per day for 100 submissions, excluding startup and other infrastructure overhead.
 
+---
+
 ## Run Log and Verdicts
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
@@ -681,8 +696,6 @@ PASS trial 3 — too-short text recorded in audit log
 ```
 
 **Verdict: MET.** The controlled calculations matched the expected population variance and burstiness scores. All nine invalid submissions returned HTTP 400 and were recorded in the audit log.
-
----
 
 ### Criterion 2 — Weighted Scoring Integration
 
@@ -772,8 +785,6 @@ Note: API processing latency is measured by run_criteria_2_4_5.py.
 
 **Verdict: PARTIAL.** The one-forward-pass requirement passed all three trials. The latency target passed in Runs 2 and 3 but failed in Run 1. The first request in Run 1 took 16,109.96 ms, which substantially increased that trial's average.
 
----
-
 ### Criterion 4 — Burstiness Score Separation
 
 **Recorded results from `criteria_2_4_5_results.json`:**
@@ -857,13 +868,13 @@ Note: API processing latency is measured by run_criteria_2_4_5.py.
 
 **Verdict: MISSED.** No human samples were incorrectly labeled as AI, but none of the 10 AI samples received the AI label in any trial. All AI samples were classified as `unsure`.
 
----
-
 ### Overall Verdict
 
 The extension passed Criteria 1, 2, and 4. Criterion 3 was partially met: the one-pass requirement passed all three trials, while the latency target passed twice. Criterion 5 was missed because the classifier did not label any of the AI samples as AI.
 
 These results are the **before-change baseline**. The thresholds and scoring weights were not adjusted during these tests. They should remain unchanged in this record so that any later changes can be evaluated against the same samples and criteria.
+
+---
 
 ## The Improvement
 
@@ -893,6 +904,7 @@ The original scores overlapped. The highest human combined score was approximate
 
 I tested an alternative weighting approach and then evaluated removing the style score from the combined formula. With the revised formula, the highest human score in the evaluation set was **0.4287**, while the highest AI score was **0.4423**. A threshold of **0.435** separated one AI sample from the human samples in this set. This gave me a reason to test the change, although the same 20 samples were used to choose the adjustment and evaluate it. The results should therefore be treated as exploratory rather than independent validation.
 
+
 ### Run Log — Before and After
 
 The following table compares the original evaluation with the improvement evaluation. Criterion 1 was rerun separately and remained unchanged.
@@ -905,6 +917,86 @@ The following table compares the original evaluation with the improvement evalua
 | 4. Burstiness separation | AI mean burstiness ≥ human mean +0.01 | Passed 3/3; gap 0.02224 | Passed 3/3; gap 0.02224 | **MET** |
 | 5. Classification outcomes | Zero human samples labelled AI; at least one AI sample labelled AI | Failed 0/3; zero AI labels | Passed 3/3; one AI label per trial | **MET** |
 
+**Criterion 1 — Burstiness calculation and invalid inputs**
+
+The same Criterion 1 test was used after the scoring change. The burstiness calculation and invalid-input handling were not modified.
+
+```
+Criterion 1 — burstiness calculation and invalid inputs
+PASS controlled token-loss calculation: variance=1.000000, burstiness_score=0.5000
+PASS mapping boundary: variance=0 -> burstiness_score=1.0000
+Rate limiting enabled: True
+PASS trial 1 — empty text: HTTP 400
+PASS trial 1 — missing text: HTTP 400
+PASS trial 1 — too-short text: HTTP 400
+PASS trial 2 — empty text: HTTP 400
+PASS trial 2 — missing text: HTTP 400
+PASS trial 2 — too-short text: HTTP 400
+PASS trial 3 — empty text: HTTP 400
+PASS trial 3 — missing text: HTTP 400
+PASS trial 3 — too-short text: HTTP 400
+```
+
+All nine invalid submissions were rejected with HTTP 400 and recorded in the audit log.
+
+**Criterion 2 — Weighted scoring integration**
+
+The updated test verified the formula \(S = 0.50M + 0.50B\) for all 60 successful submissions.
+
+```
+Trial 1 summary:
+  Criterion 2 weighted-score formula: PASS
+
+Trial 2 summary:
+  Criterion 2 weighted-score formula: PASS
+
+Trial 3 summary:
+  Criterion 2 weighted-score formula: PASS
+```
+
+**Criterion 3 — Computational overhead**
+
+The one-pass test continued to pass in all three trials:
+
+```
+Criterion 3 — one GPT-2 forward pass for both model signals
+Detector device: cpu
+Detector dtype: torch.float32
+PASS trial 1: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+PASS trial 2: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+PASS trial 3: forward_calls=1, model_score=0.7265, burstiness_score=0.1309
+
+Criterion 3 one-pass check: PASS
+```
+
+The API latency measurements were:
+
+```
+Trial 1: 1189.28 ms — FAIL (limit 600 ms)
+Trial 2: 432.19 ms — PASS (limit 600 ms)
+Trial 3: 457.90 ms — PASS (limit 600 ms)
+```
+
+**Criterion 4 — Burstiness separation**
+
+```
+Trial 1: human=0.0987, AI=0.1210, gap=0.0222 — PASS
+Trial 2: human=0.0987, AI=0.1210, gap=0.0222 — PASS
+Trial 3: human=0.0987, AI=0.1210, gap=0.0222 — PASS
+```
+
+**Criterion 5 — Classification outcomes**
+
+```
+Trial 1: human→AI=0, AI→AI=1 — PASS
+Trial 2: human→AI=0, AI→AI=1 — PASS
+Trial 3: human→AI=0, AI→AI=1 — PASS
+```
+
+The same 10 human and 10 AI samples were used in every trial. One AI sample was classified as AI in each trial, and no human samples were classified as AI. 
+
+---
+
 ## What's Still Broken
 
 **Criterion 3 — Average API latency:** The target of no more than 600 ms was missed in Trial 1, which averaged 1,189.28 ms. Trials 2 and 3 passed at 432.19 ms and 457.90 ms. The first request in Trial 1 took 14,333.39 ms, suggesting that model loading or cold-start overhead contributed to the failure. If I continued working on this, I would add an explicit model warm-up during application startup and report cold-start latency separately from warmed-up request latency. I stopped here because the one-forward-pass requirement was already satisfied, two latency trials passed, and I did not want to change the inference path without more testing.
@@ -914,6 +1006,8 @@ The other four criteria passed in all three trials. However, Criterion 5's targe
 ### What I Would Do Next
 
 First, I would evaluate the revised detector on a larger, independently collected and labelled dataset, because the current threshold was selected using the same 20 samples used for evaluation. That would show whether the improvement generalizes and whether the threshold can maintain a low human false-positive rate on writing the detector has not seen.
+
+---
 
 ## How I Used AI
 
