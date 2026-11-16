@@ -571,7 +571,16 @@ I will extend the existing Provenance Guard detection service by introducing a t
 
 Although Shape C is the selected extension, deployment and instrumentation are still required. The service will run locally using a documented command, with structured logging, latency measurement, and a measured cost per run.
 
+### What's Out of Scope
+
+- **Span-level scoring:** I considered evaluating individual paragraphs and identifying which spans contribute most to a submission's classification. However, this would require additional processing, score aggregation, and response changes, making it too large for this unit.
+- **Additional detection capabilities:** I will not introduce further signals, additional models, or a second GPT-2 inference pass. The Burstiness Signal will be the only new detection capability.
+- **Interface and architectural changes:** I will not add a user interface, rewrite the existing signals, or rebuild the service from scratch. I will preserve the existing architecture and response mechanism wherever possible.
+
+I will also keep the initial signal weights fixed during implementation and baseline evaluation. Any weight adjustment will be reserved for the single controlled improvement during the evaluation phase.
+
 ---
+
 
 ## Running It
 
@@ -583,14 +592,6 @@ python app.py
 Once started, the service is available at `http://127.0.0.1:5000`. The first run downloads approximately 526 MB of GPT-2 model files from Hugging Face, so an internet connection is required.
 
 For complete setup instructions, dependency details, verification commands, logging information, and troubleshooting, see [**RUNNING.md**](RUNNING.md).
-
-### What's Out of Scope
-
-- **Span-level scoring:** I considered evaluating individual paragraphs and identifying which spans contribute most to a submission's classification. However, this would require additional processing, score aggregation, and response changes, making it too large for this unit.
-- **Additional detection capabilities:** I will not introduce further signals, additional models, or a second GPT-2 inference pass. The Burstiness Signal will be the only new detection capability.
-- **Interface and architectural changes:** I will not add a user interface, rewrite the existing signals, or rebuild the service from scratch. I will preserve the existing architecture and response mechanism wherever possible.
-
-I will also keep the initial signal weights fixed during implementation and baseline evaluation. Any weight adjustment will be reserved for the single controlled improvement during the evaluation phase.
 
 ---
 
